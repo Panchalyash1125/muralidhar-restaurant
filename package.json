@@ -1,0 +1,47 @@
+{
+  "name": "muralidhar-restaurant-system",
+  "version": "1.0.0",
+  "description": "Production-grade QR Ordering System for Muralidhar Restaurant",
+  "main": "backend/server.js",
+  "scripts": {
+    "start": "node backend/server.js",
+    "dev": "nodemon backend/server.js",
+    "setup": "node backend/database/setup.js",
+    "seed": "node backend/database/seeds.js",
+    "reset-db": "node backend/database/reset.js",
+    "test": "echo Tests will be added in Module 6",
+    "lint": "eslint backend/"
+  },
+  "keywords": [
+    "restaurant",
+    "qr-ordering",
+    "pos",
+    "food-ordering",
+    "indian-restaurant"
+  ],
+  "author": "Muralidhar Restaurant",
+  "license": "MIT",
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "better-sqlite3": "^9.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "express-rate-limit": "^7.1.5",
+    "express-validator": "^7.0.1",
+    "helmet": "^7.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "morgan": "^1.10.0",
+    "multer": "^2.2.0",
+    "qrcode": "^1.5.3",
+    "socket.io": "^4.7.4",
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.3"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  }
+}

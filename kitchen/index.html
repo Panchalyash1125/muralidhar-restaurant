@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#121212">
+  <title>Kitchen Display | Muralidhar Restaurant</title>
+
+  <!-- Shared Styles -->
+  <link rel="stylesheet" href="../shared/css/theme.css">
+  <!-- Kitchen Styles -->
+  <link rel="stylesheet" href="css/kitchen.css">
+</head>
+<body class="kds-body">
+
+  <!-- Header -->
+  <header class="kds-header">
+    <div class="kds-header-left">
+      <h1 class="kds-title">🍳 Kitchen Display</h1>
+      <span id="connectionBadge" class="connection-badge offline">
+        <span class="dot"></span> Connecting...
+      </span>
+    </div>
+    <div class="kds-header-right">
+      <div class="kds-clock" id="liveClock">--:--:--</div>
+      <div class="kds-stats">
+        <div class="stat-pill">
+          <span class="stat-value" id="statPending">0</span>
+          <span class="stat-label">Pending</span>
+        </div>
+        <div class="stat-pill">
+          <span class="stat-value" id="statPreparing">0</span>
+          <span class="stat-label">Preparing</span>
+        </div>
+        <div class="stat-pill">
+          <span class="stat-value" id="statReady">0</span>
+          <span class="stat-label">Ready</span>
+        </div>
+      </div>
+      <button id="soundToggle" class="icon-btn" title="Toggle new-order sound" aria-label="Toggle sound">🔔</button>
+      <button id="refreshBtn" class="icon-btn" title="Refresh now" aria-label="Refresh">⟳</button>
+    </div>
+  </header>
+
+  <!-- Orders Grid -->
+  <main class="kds-main">
+    <div id="ordersGrid" class="orders-grid"></div>
+
+    <div id="emptyState" class="empty-state hidden">
+      <div class="empty-icon">🍽️</div>
+      <h2>No active orders</h2>
+      <p>New orders will appear here automatically.</p>
+    </div>
+  </main>
+
+  <!-- Order card template -->
+  <template id="orderCardTemplate">
+    <article class="order-card">
+      <div class="order-card-header">
+        <div class="order-id-block">
+          <span class="order-number"></span>
+          <span class="order-table"></span>
+        </div>
+        <span class="order-timer"></span>
+      </div>
+
+      <div class="order-meta">
+        <div class="meta-row">
+          <span class="meta-label">📱 Mobile</span>
+          <span class="meta-value order-phone"></span>
+        </div>
+        <div class="meta-row">
+          <span class="meta-label">🕒 Placed</span>
+          <span class="meta-value order-time"></span>
+        </div>
+      </div>
+
+      <ul class="order-items"></ul>
+
+      <div class="order-footer">
+        <div class="order-total">
+          <span class="total-label">Total</span>
+          <span class="total-value"></span>
+        </div>
+        <span class="status-badge"></span>
+      </div>
+
+      <div class="order-actions"></div>
+    </article>
+  </template>
+
+  <!-- Shared Utilities -->
+  <script src="../shared/js/utils.js"></script>
+  <!-- Socket.IO Client (served by backend) -->
+  <script src="/socket.io/socket.io.js"></script>
+  <!-- Kitchen Logic -->
+  <script src="js/kitchen.js"></script>
+</body>
+</html>

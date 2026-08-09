@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#FF6B00">
+  <title>Counter Panel | Muralidhar Restaurant</title>
+
+  <!-- Shared Styles -->
+  <link rel="stylesheet" href="../shared/css/theme.css">
+  <!-- Counter Styles -->
+  <link rel="stylesheet" href="style.css">
+
+  <!-- Google Font used by shared theme (display font) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@500;600;700&display=swap" rel="stylesheet">
+</head>
+<body class="counter-body">
+
+  <!-- Header -->
+  <header class="counter-header">
+    <div class="counter-header-left">
+      <h1 class="counter-title">💰 Counter Panel</h1>
+      <span id="connectionBadge" class="connection-badge offline">
+        <span class="dot"></span> Connecting...
+      </span>
+    </div>
+    <div class="counter-header-right">
+      <div class="counter-clock" id="liveClock">--:--:--</div>
+      <div class="counter-stats">
+        <div class="stat-pill">
+          <span class="stat-value" id="statActiveBills">0</span>
+          <span class="stat-label">Active Bills</span>
+        </div>
+        <div class="stat-pill">
+          <span class="stat-value" id="statRevenue">₹0</span>
+          <span class="stat-label">Open Value</span>
+        </div>
+      </div>
+      <button id="refreshBtn" class="icon-btn" title="Refresh now" aria-label="Refresh">⟳</button>
+    </div>
+  </header>
+
+  <!-- Orders Grid -->
+  <main class="counter-main">
+    <div id="ordersGrid" class="bills-grid"></div>
+
+    <div id="emptyState" class="empty-state hidden">
+      <div class="empty-icon">🧾</div>
+      <h2>No active orders</h2>
+      <p>New orders placed by customers will appear here automatically.</p>
+    </div>
+  </main>
+
+  <!-- Bill card template -->
+  <template id="billCardTemplate">
+    <article class="bill-card">
+      <div class="bill-card-header">
+        <div class="bill-id-block">
+          <span class="bill-table"></span>
+          <span class="bill-number"></span>
+        </div>
+        <span class="status-badge"></span>
+      </div>
+
+      <div class="bill-meta">
+        <div class="meta-row">
+          <span class="meta-label">📱 Mobile</span>
+          <span class="meta-value bill-phone"></span>
+        </div>
+        <div class="meta-row">
+          <span class="meta-label">🕒 Order Time</span>
+          <span class="meta-value bill-time"></span>
+        </div>
+      </div>
+
+      <ul class="bill-items"></ul>
+
+      <div class="bill-totals">
+        <div class="totals-row">
+          <span>Subtotal</span>
+          <span class="val-subtotal"></span>
+        </div>
+        <div class="totals-row">
+          <span>GST</span>
+          <span class="val-gst"></span>
+        </div>
+        <div class="totals-row grand">
+          <span>Grand Total</span>
+          <span class="val-grand"></span>
+        </div>
+      </div>
+
+      <div class="bill-actions">
+        <button class="action-btn view-btn">🧾 View Bill</button>
+        <button class="action-btn pay-btn">✅ Mark as Paid</button>
+        <button class="action-btn delete-btn">🗑 Delete</button>
+      </div>
+    </article>
+  </template>
+
+  <!-- View Bill Modal -->
+  <div id="billModalOverlay" class="modal-overlay hidden">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3 id="modalTitle">Bill Details</h3>
+        <button id="modalCloseBtn" class="modal-close">&times;</button>
+      </div>
+      <div class="modal-body" id="modalBody"></div>
+    </div>
+  </div>
+
+  <!-- Shared Utilities -->
+  <script src="../shared/js/utils.js"></script>
+  <!-- Socket.IO Client (served by backend) -->
+  <script src="/socket.io/socket.io.js"></script>
+  <!-- Counter Logic -->
+  <script src="script.js"></script>
+</body>
+</html>

@@ -1,0 +1,361 @@
+/* ============================================
+   ADMIN LOGIN
+   Dark, premium restaurant theme
+   ============================================ */
+
+.admin-body {
+  min-height: 100vh;
+  font-family: var(--font-primary);
+  color: var(--dark-text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-lg) var(--space-md);
+  background:
+    radial-gradient(circle at 15% 15%, rgba(255,107,0,0.12), transparent 40%),
+    radial-gradient(circle at 85% 85%, rgba(255,184,0,0.10), transparent 40%),
+    linear-gradient(160deg, #121212 0%, #1a1a1a 55%, #141414 100%);
+  background-attachment: fixed;
+}
+
+.admin-wrapper {
+  width: 100%;
+  max-width: 420px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* ============================================
+   BRAND
+   ============================================ */
+.admin-brand {
+  text-align: center;
+  margin-bottom: var(--space-lg);
+}
+
+.brand-icon {
+  font-size: 2.75rem;
+  filter: drop-shadow(0 4px 12px rgba(255,107,0,0.35));
+  animation: fadeInScale 0.5s ease;
+}
+
+.brand-title {
+  font-family: var(--font-display);
+  font-size: 1.4rem;
+  font-weight: 800;
+  color: var(--white);
+  letter-spacing: 0.01em;
+  margin-top: var(--space-sm);
+}
+
+.brand-subtitle {
+  font-size: 0.85rem;
+  color: var(--secondary-yellow);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-weight: 600;
+  margin-top: 2px;
+}
+
+/* ============================================
+   CARD
+   ============================================ */
+.admin-card {
+  width: 100%;
+  background: var(--dark-card);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: var(--radius-xl);
+  padding: var(--space-xl) var(--space-lg);
+  box-shadow: var(--shadow-xl);
+  animation: fadeInUp 0.45s ease forwards;
+}
+
+.admin-card.hidden {
+  display: none;
+}
+
+.card-heading {
+  font-family: var(--font-display);
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: var(--white);
+  text-align: center;
+}
+
+.card-subheading {
+  font-size: 0.85rem;
+  color: var(--dark-text-secondary);
+  text-align: center;
+  margin-top: 4px;
+  margin-bottom: var(--space-lg);
+}
+
+/* ============================================
+   FORM
+   ============================================ */
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.form-group label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--dark-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.input-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  background: rgba(255,255,255,0.05);
+  border: 1.5px solid rgba(255,255,255,0.08);
+  border-radius: var(--radius-md);
+  transition: border-color var(--transition-fast), background var(--transition-fast);
+}
+
+.input-wrap:focus-within {
+  border-color: var(--primary-orange);
+  background: rgba(255,107,0,0.06);
+}
+
+.input-icon {
+  padding: 0 var(--space-sm) 0 var(--space-md);
+  font-size: 1rem;
+  opacity: 0.7;
+}
+
+.input-wrap input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  padding: 13px 8px;
+  font-size: 0.95rem;
+  color: var(--white);
+}
+
+.input-wrap input::placeholder {
+  color: var(--dark-gray);
+}
+
+.input-wrap.shake {
+  animation: shake 0.4s ease;
+  border-color: var(--secondary-red);
+}
+
+.toggle-password {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0 var(--space-md);
+  font-size: 1rem;
+  opacity: 0.6;
+  transition: opacity var(--transition-fast);
+}
+
+.toggle-password:hover {
+  opacity: 1;
+}
+
+.form-error {
+  background: rgba(255,68,68,0.12);
+  border: 1px solid rgba(255,68,68,0.35);
+  color: #ff8080;
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 10px 14px;
+  border-radius: var(--radius-md);
+  text-align: center;
+}
+
+.form-error.hidden {
+  display: none;
+}
+
+.form-options {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.remember-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.82rem;
+  color: var(--dark-text-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+
+.remember-label input {
+  accent-color: var(--primary-orange);
+  width: 15px;
+  height: 15px;
+  cursor: pointer;
+}
+
+/* ============================================
+   LOGIN BUTTON
+   ============================================ */
+.login-btn {
+  position: relative;
+  background: linear-gradient(135deg, var(--primary-orange), var(--primary-orange-dark));
+  color: var(--white);
+  font-weight: 700;
+  font-size: 1rem;
+  padding: 14px;
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-orange);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  transition: transform var(--transition-fast), filter var(--transition-fast);
+}
+
+.login-btn:hover {
+  filter: brightness(1.06);
+}
+
+.login-btn:active {
+  transform: scale(0.98);
+}
+
+.login-btn[disabled] {
+  opacity: 0.75;
+  pointer-events: none;
+}
+
+.btn-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2.5px solid rgba(255,255,255,0.4);
+  border-top-color: var(--white);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+.btn-spinner.hidden {
+  display: none;
+}
+
+.demo-hint {
+  text-align: center;
+  font-size: 0.75rem;
+  color: var(--dark-gray);
+  margin-top: var(--space-lg);
+}
+
+.demo-hint code {
+  background: rgba(255,255,255,0.08);
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: var(--secondary-yellow);
+  font-family: 'Courier New', monospace;
+}
+
+/* ============================================
+   SESSION CARD (Logged in)
+   ============================================ */
+.session-avatar {
+  width: 64px;
+  height: 64px;
+  margin: 0 auto var(--space-md);
+  border-radius: 50%;
+  background: var(--primary-orange-pale);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.75rem;
+  box-shadow: 0 0 0 4px rgba(255,107,0,0.15);
+}
+
+.session-info {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: var(--radius-md);
+  padding: var(--space-md);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: var(--space-md);
+}
+
+.session-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.85rem;
+  color: var(--dark-text-secondary);
+}
+
+.session-value {
+  color: var(--white);
+  font-weight: 600;
+}
+
+.dashboard-placeholder {
+  text-align: center;
+  padding: var(--space-lg) var(--space-sm);
+  border: 1.5px dashed rgba(255,255,255,0.12);
+  border-radius: var(--radius-md);
+  color: var(--dark-text-secondary);
+  margin-bottom: var(--space-lg);
+}
+
+.placeholder-icon {
+  font-size: 1.75rem;
+  margin-bottom: 6px;
+}
+
+.logout-btn {
+  width: 100%;
+  background: rgba(255,68,68,0.12);
+  border: 1.5px solid rgba(255,68,68,0.35);
+  color: #ff8080;
+  font-weight: 700;
+  font-size: 0.95rem;
+  padding: 13px;
+  border-radius: var(--radius-md);
+  transition: background var(--transition-fast), transform var(--transition-fast);
+}
+
+.logout-btn:hover {
+  background: rgba(255,68,68,0.2);
+}
+
+.logout-btn:active {
+  transform: scale(0.98);
+}
+
+/* ============================================
+   FOOTER
+   ============================================ */
+.admin-footer {
+  margin-top: var(--space-lg);
+  font-size: 0.75rem;
+  color: var(--dark-gray);
+  text-align: center;
+}
+
+/* ============================================
+   RESPONSIVE
+   ============================================ */
+@media (max-width: 480px) {
+  .admin-card {
+    padding: var(--space-lg) var(--space-md);
+  }
+  .brand-title {
+    font-size: 1.2rem;
+  }
+}

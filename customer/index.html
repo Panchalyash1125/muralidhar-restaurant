@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#FF6B00">
+  <meta name="description" content="Order delicious food at Muralidhar Restaurant - Scan, Order, Enjoy!">
+  <title>Welcome | Muralidhar Restaurant</title>
+
+  <!-- PWA Manifest -->
+  <link rel="manifest" href="manifest.json">
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/svg+xml" href="../shared/images/logo-icon.svg">
+
+  <!-- Preconnect for performance -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+
+  <!-- Google Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <!-- Shared Styles -->
+  <link rel="stylesheet" href="../shared/css/theme.css">
+
+  <!-- Customer Styles -->
+  <link rel="stylesheet" href="css/customer.css">
+
+  <style>
+    /* Entry Page Specific Styles */
+    .entry-page {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(135deg, #FFF3E6 0%, #FFFFFF 50%, #FFF3E6 100%);
+      padding: 24px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .entry-page::before {
+      content: '';
+      position: absolute;
+      top: -50%;
+      right: -50%;
+      width: 100%;
+      height: 100%;
+      background: radial-gradient(circle, rgba(255,107,0,0.05) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    .entry-page::after {
+      content: '';
+      position: absolute;
+      bottom: -50%;
+      left: -50%;
+      width: 100%;
+      height: 100%;
+      background: radial-gradient(circle, rgba(255,184,0,0.05) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    .entry-logo {
+      width: 120px;
+      height: 120px;
+      background: var(--primary-orange);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 24px;
+      box-shadow: 0 8px 32px rgba(255,107,0,0.3);
+      animation: fadeInScale 0.6s ease forwards;
+      position: relative;
+      z-index: 1;
+    }
+
+    .entry-logo svg {
+      width: 60px;
+      height: 60px;
+      fill: white;
+    }
+
+    .entry-title {
+      font-family: 'Poppins', sans-serif;
+      font-size: 2rem;
+      font-weight: 800;
+      color: var(--text-primary);
+      margin-bottom: 8px;
+      animation: fadeInUp 0.6s ease 0.2s both;
+      position: relative;
+      z-index: 1;
+      text-align: center;
+    }
+
+    .entry-subtitle {
+      font-size: 1rem;
+      color: var(--text-secondary);
+      margin-bottom: 40px;
+      animation: fadeInUp 0.6s ease 0.3s both;
+      position: relative;
+      z-index: 1;
+      text-align: center;
+    }
+
+    .table-badge {
+      background: var(--primary-orange);
+      color: white;
+      padding: 12px 32px;
+      border-radius: 50px;
+      font-size: 1.25rem;
+      font-weight: 700;
+      margin-bottom: 32px;
+      box-shadow: var(--shadow-orange);
+      animation: fadeInUp 0.6s ease 0.4s both;
+      position: relative;
+      z-index: 1;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .table-badge::before {
+      content: '🪑';
+      font-size: 1.5rem;
+    }
+
+    .start-btn {
+      background: var(--primary-orange);
+      color: white;
+      border: none;
+      padding: 16px 48px;
+      border-radius: 50px;
+      font-size: 1.125rem;
+      font-weight: 600;
+      cursor: pointer;
+      box-shadow: var(--shadow-orange);
+      transition: all 0.3s ease;
+      animation: fadeInUp 0.6s ease 0.5s both;
+      position: relative;
+      z-index: 1;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .start-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(255,107,0,0.4);
+    }
+
+    .start-btn:active {
+      transform: translateY(0);
+    }
+
+    .start-btn svg {
+      width: 20px;
+      height: 20px;
+      fill: currentColor;
+    }
+
+    .entry-footer {
+      position: absolute;
+      bottom: 24px;
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 0.75rem;
+      animation: fadeIn 0.6s ease 0.7s both;
+    }
+
+    .error-state {
+      text-align: center;
+      animation: fadeInUp 0.5s ease;
+    }
+
+    .error-state .icon {
+      font-size: 4rem;
+      margin-bottom: 16px;
+    }
+
+    .error-state h2 {
+      font-size: 1.5rem;
+      color: var(--text-primary);
+      margin-bottom: 8px;
+    }
+
+    .error-state p {
+      color: var(--text-secondary);
+      margin-bottom: 24px;
+    }
+
+    .retry-btn {
+      background: var(--primary-orange);
+      color: white;
+      border: none;
+      padding: 12px 32px;
+      border-radius: 50px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    /* Floating food decorations */
+    .food-decoration {
+      position: absolute;
+      font-size: 2rem;
+      opacity: 0.1;
+      animation: float 6s ease-in-out infinite;
+      pointer-events: none;
+    }
+
+    .food-decoration:nth-child(1) { top: 10%; left: 10%; animation-delay: 0s; }
+    .food-decoration:nth-child(2) { top: 20%; right: 15%; animation-delay: 1s; }
+    .food-decoration:nth-child(3) { bottom: 20%; left: 15%; animation-delay: 2s; }
+    .food-decoration:nth-child(4) { bottom: 10%; right: 10%; animation-delay: 3s; }
+    .food-decoration:nth-child(5) { top: 50%; left: 5%; animation-delay: 4s; }
+
+    @keyframes float {
+      0%, 100% { transform: translateY(0) rotate(0deg); }
+      50% { transform: translateY(-20px) rotate(5deg); }
+    }
+
+    @media (max-width: 640px) {
+      .entry-title { font-size: 1.5rem; }
+      .entry-logo { width: 100px; height: 100px; }
+      .entry-logo svg { width: 50px; height: 50px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="entry-page" id="entryPage">
+    <!-- Floating decorations -->
+    <span class="food-decoration">☕</span>
+    <span class="food-decoration">🍽️</span>
+    <span class="food-decoration">🍛</span>
+    <span class="food-decoration">🫓</span>
+    <span class="food-decoration">🍵</span>
+
+    <!-- Logo -->
+    <div class="entry-logo">
+      <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+        <path d="M11 9H9V2H7v7H5V2H3v7c0 2.12 1.66 3.84 3.75 3.97V22h2.5v-9.03C11.34 12.84 13 11.12 13 9V2h-2v7zm5-3v8h2.5v8H21V2c-2.76 0-5 2.24-5 4z"/>
+      </svg>
+    </div>
+
+    <!-- Title -->
+    <h1 class="entry-title">Muralidhar Restaurant</h1>
+    <p class="entry-subtitle">Authentic Gujarati Cuisine</p>
+
+    <!-- Table Badge (dynamically populated) -->
+    <div class="table-badge" id="tableBadge" style="display: none;">
+      Table <span id="tableNumber">--</span>
+    </div>
+
+    <!-- Start Button -->
+    <button class="start-btn" id="startBtn" style="display: none;" onclick="startOrdering()">
+      Start Ordering
+      <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+        <path d="M12 4l-1.41 1.41L16.17 11H4v2h12.17l-5.58 5.59L12 20l8-8z"/>
+      </svg>
+    </button>
+
+    <!-- Error State (hidden by default) -->
+    <div class="error-state" id="errorState" style="display: none;">
+      <div class="icon">⚠️</div>
+      <h2>Invalid Table</h2>
+      <p>Please scan the QR code on your table to start ordering.</p>
+      <button class="retry-btn" onclick="location.reload()">Retry</button>
+    </div>
+
+    <!-- Footer -->
+    <div class="entry-footer">
+      © 2026 Muralidhar Restaurant • Made with ❤️ in Gujarat
+    </div>
+  </div>
+
+  <!-- Shared Utilities -->
+  <script src="../shared/js/utils.js"></script>
+
+  <!-- Entry Logic -->
+  <script>
+    /**
+     * Entry Page Logic
+     * Detects table number from URL query parameter
+     * Validates table number and redirects to menu
+     */
+
+    (function() {
+      const tableBadge = document.getElementById('tableBadge');
+      const tableNumber = document.getElementById('tableNumber');
+      const startBtn = document.getElementById('startBtn');
+      const errorState = document.getElementById('errorState');
+
+      // Get table number from URL
+      const table = URLUtils.getTableNumber();
+
+      // Validate table number
+      if (table && Validators.isValidTable(table)) {
+        // Valid table - show table badge and start button
+        tableNumber.textContent = table;
+        tableBadge.style.display = 'flex';
+        startBtn.style.display = 'flex';
+
+        // Store table number in session
+        Storage.set('muralidhar_table', table);
+
+      } else {
+        // Invalid or missing table number - show error
+        errorState.style.display = 'block';
+        tableBadge.style.display = 'none';
+        startBtn.style.display = 'none';
+      }
+
+      // Global function for start button
+      window.startOrdering = function() {
+        const table = URLUtils.getTableNumber();
+        if (table && Validators.isValidTable(table)) {
+          // Add loading animation
+          startBtn.innerHTML = '<div class="spinner spinner-sm" style="border-color: rgba(255,255,255,0.3); border-top-color: white;"></div> Loading...';
+          startBtn.disabled = true;
+
+          // Redirect to menu with table parameter
+          setTimeout(() => {
+            window.location.href = `menu.html?table=${table}`;
+          }, 500);
+        }
+      };
+    })();
+  </script>
+</body>
+</html>

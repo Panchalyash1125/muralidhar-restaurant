@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#FF6B00">
+  <meta name="description" content="Browse our delicious menu at Muralidhar Restaurant">
+  <title>Menu | Muralidhar Restaurant</title>
+
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" type="image/svg+xml" href="../shared/images/logo-icon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="../shared/css/theme.css">
+  <link rel="stylesheet" href="css/customer.css">
+</head>
+<body>
+  <!-- Header -->
+  <header class="customer-header" id="header">
+    <div class="header-top">
+      <div class="header-brand">
+        <div class="header-logo">
+          <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path d="M11 9H9V2H7v7H5V2H3v7c0 2.12 1.66 3.84 3.75 3.97V22h2.5v-9.03C11.34 12.84 13 11.12 13 9V2h-2v7zm5-3v8h2.5v8H21V2c-2.76 0-5 2.24-5 4z"/>
+          </svg>
+        </div>
+        <div class="header-info">
+          <h1>Muralidhar Restaurant</h1>
+          <span>Authentic Gujarati Cuisine</span>
+        </div>
+      </div>
+      <div class="table-indicator" id="tableIndicator">
+        Table <span id="tableNum">--</span>
+      </div>
+    </div>
+
+    <!-- Search Bar -->
+    <div class="search-container">
+      <div class="search-box">
+        <span class="search-icon">🔍</span>
+        <input type="text" id="searchInput" placeholder="Search for Cha, Poha, Roti..." autocomplete="off">
+        <button class="search-clear hidden" id="searchClear">×</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main>
+    <!-- Categories -->
+    <section class="categories-section">
+      <div class="categories-list" id="categoriesList" aria-label="Menu categories">
+        <!-- Category buttons are rendered dynamically from MenuService. -->
+      </div>
+    </section>
+
+    <!-- Menu Section -->
+    <section class="menu-section">
+      <div class="section-header">
+        <h2 class="section-title">Today's Menu</h2>
+        <span class="item-count" id="itemCount">3 items</span>
+      </div>
+
+      <div class="food-grid" id="foodGrid">
+        <!-- Food cards will be rendered by JavaScript -->
+      </div>
+
+      <!-- No Results -->
+      <div class="empty-cart hidden" id="noResults">
+        <div class="empty-cart-icon">🔍</div>
+        <h2>No items found</h2>
+        <p>Try searching with different keywords</p>
+      </div>
+    </section>
+  </main>
+
+  <!-- Floating Cart -->
+  <div class="floating-cart" id="floatingCart" onclick="goToCart()">
+    <div class="cart-info">
+      <div class="cart-icon">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <path d="M7 18c-1.1 0-1.99.9-1.99 2S5.9 22 7 22s2-.9 2-2-.9-2-2-2zM1 2v2h2l3.6 7.59-1.35 2.45c-.16.28-.25.61-.25.96 0 1.1.9 2 2 2h12v-2H7.42c-.14 0-.25-.11-.25-.25l.03-.12.9-1.63h7.45c.75 0 1.41-.41 1.75-1.03l3.58-6.49c.08-.14.12-.31.12-.48 0-.55-.45-1-1-1H5.21l-.94-2H1zm16 16c-1.1 0-1.99.9-1.99 2s.89 2 1.99 2 2-.9 2-2-.9-2-2-2z"/>
+        </svg>
+        <span class="cart-count" id="cartCount">0</span>
+      </div>
+      <span class="cart-text">View Cart</span>
+    </div>
+    <span class="cart-price" id="cartPrice">₹0</span>
+    <svg class="cart-arrow" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+      <path d="M12 4l-1.41 1.41L16.17 11H4v2h12.17l-5.58 5.59L12 20l8-8z"/>
+    </svg>
+  </div>
+
+  <!-- Scripts -->
+  <script src="../shared/js/utils.js"></script>
+  <script src="../shared/js/menu-service.js"></script>
+  <script src="js/menu.js"></script>
+</body>
+</html>
