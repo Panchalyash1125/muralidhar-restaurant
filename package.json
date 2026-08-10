@@ -4,9 +4,9 @@
   "description": "Production-grade QR Ordering System for Muralidhar Restaurant",
   "main": "backend/server.js",
   "scripts": {
-    "start": "node backend/server.js",
+    "start": "node backend/start.js",
     "dev": "nodemon backend/server.js",
-    "setup": "node backend/database/setup.js",
+    "setup": "node backend/database/setup-postgres.js",
     "seed": "node backend/database/seeds.js",
     "reset-db": "node backend/database/reset.js",
     "test": "echo Tests will be added in Module 6",
@@ -23,7 +23,6 @@
   "license": "MIT",
   "dependencies": {
     "bcryptjs": "^2.4.3",
-    "better-sqlite3": "^9.4.3",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
     "express": "^4.18.2",
@@ -35,7 +34,8 @@
     "multer": "^2.2.0",
     "qrcode": "^1.5.3",
     "socket.io": "^4.7.4",
-    "uuid": "^9.0.1"
+    "uuid": "^9.0.1",
+    "pg": "^8.16.3"
   },
   "devDependencies": {
     "nodemon": "^3.0.3"
