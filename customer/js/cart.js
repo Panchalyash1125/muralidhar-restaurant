@@ -25,7 +25,7 @@ const CartDOM = {
 // INITIALIZATION
 // ============================================
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
   // Cache DOM elements
   CartDOM.cartItems = document.getElementById('cartItems');
   CartDOM.emptyCart = document.getElementById('emptyCart');
@@ -40,7 +40,8 @@ document.addEventListener('DOMContentLoaded', () => {
   // Validate table
   validateTableAccess();
 
-  // Remove hidden/deleted dishes and refresh current dish details/prices.
+  // Load the current shared Neon menu first, then reconcile the cart.
+  await MenuService.refresh(false);
   reconcileCartWithMenu();
 
   // Render cart

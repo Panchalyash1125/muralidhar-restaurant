@@ -1051,6 +1051,40 @@ app.get('/api/admin/dashboard/stats', async (req, res) => {
 // Separate from the public, read-only /api/menu (customer-facing) and
 // /api/categories endpoints, which are left untouched.
 
+async function resolveCategoryId(categoryValue) {
+  const raw = String(categoryValue ?? '').trim();
+  if (!raw) return null;
+
+  // Existing numeric category id.
+  if (/^\d+$/.test(raw)) {
+    const byId = await db.prepare('SELECT id FROM categories WHERE id = ?').get(Number(raw));
+    if (byId) return byId.id;
+  }
+
+  // Match a category by name, case-insensitively. Slugs such as main-course
+  // are compared against names with spaces converted to dashes.
+  const byName = await db.prepare(`
+    SELECT id FROM categories
+    WHERE LOWER(name) = LOWER(?)
+       OR LOWER(REPLACE(name, ' ', '-')) = LOWER(?)
+    LIMIT 1
+  `).get(raw, raw);
+  if (byName) return byName.id;
+
+  // Admin may create a new category simply by using a new category name/slug.
+  const displayName = raw
+    .split('-')
+    .filter(Boolean)
+    .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ') || 'Other';
+  const maxRow = await db.prepare('SELECT COALESCE(MAX(display_order), 0) AS m FROM categories').get();
+  const result = await db.prepare(`
+    INSERT INTO categories (name, description, display_order, is_active)
+    VALUES (?, ?, ?, TRUE)
+  `).run(displayName, `${displayName} items`, Number(maxRow.m || 0) + 1);
+  return result.lastInsertRowid;
+}
+
 function serializeMenuItem(row) {
   return {
     id: row.id,
@@ -1149,8 +1183,8 @@ app.post('/api/admin/menu', async (req, res) => {
         return res.status(400).json({ success: false, message: 'Category is required' });
       }
 
-      const category = await db.prepare('SELECT id FROM categories WHERE id = ?').get(category_id);
-      if (!category) {
+      const resolvedCategoryId = await resolveCategoryId(category_id);
+      if (!resolvedCategoryId) {
         return res.status(400).json({ success: false, message: 'Selected category does not exist' });
       }
 
@@ -1161,7 +1195,7 @@ app.post('/api/admin/menu', async (req, res) => {
           (category_id, name, description, price, image_url, is_veg, is_best_seller, is_available, preparation_time, display_order)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
-        category_id,
+        resolvedCategoryId,
         name.trim(),
         description || null,
         parseFloat(price),
@@ -1207,11 +1241,9 @@ app.put('/api/admin/menu/:id', async (req, res) => {
         is_veg, is_best_seller, is_available, preparation_time, display_order
       } = req.body;
 
-      if (category_id) {
-        const category = await db.prepare('SELECT id FROM categories WHERE id = ?').get(category_id);
-        if (!category) {
-          return res.status(400).json({ success: false, message: 'Selected category does not exist' });
-        }
+      const resolvedCategoryId = category_id ? await resolveCategoryId(category_id) : existing.category_id;
+      if (!resolvedCategoryId) {
+        return res.status(400).json({ success: false, message: 'Selected category does not exist' });
       }
 
       if (price !== undefined && (isNaN(parseFloat(price)) || parseFloat(price) < 0)) {
@@ -1238,7 +1270,7 @@ app.put('/api/admin/menu/:id', async (req, res) => {
         name !== undefined && name.trim() ? name.trim() : existing.name,
         description !== undefined ? description : existing.description,
         price !== undefined && price !== '' ? parseFloat(price) : existing.price,
-        category_id || existing.category_id,
+        resolvedCategoryId,
         imageUrl,
         is_veg !== undefined ? (is_veg === 'false' ? false : true) : existing.is_veg,
         is_best_seller !== undefined ? (is_best_seller === 'true' ? true : false) : existing.is_best_seller,

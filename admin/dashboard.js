@@ -172,11 +172,10 @@
     } else {
       els.viewMenu.classList.remove('hidden');
       els.topbarTitle.textContent = 'Menu Management';
-      if (categories.length === 0) {
-        loadCategories().then(loadMenuItems);
-      } else {
-        loadMenuItems();
-      }
+      MenuService.refresh(true).then(async () => {
+        await loadCategories();
+        await loadMenuItems();
+      });
     }
   }
 
@@ -190,7 +189,7 @@
     } else if (currentView === 'settings') {
       loadRestaurantSettings().finally(done);
     } else {
-      loadMenuItems().finally(done);
+      MenuService.refresh(true).then(loadMenuItems).finally(done);
     }
   });
 
@@ -353,11 +352,11 @@
     else if (action === 'show') toggleAvailability(item, true);
   });
 
-  function toggleAvailability(item, makeAvailable) {
+  async function toggleAvailability(item, makeAvailable) {
     try {
-      makeAvailable ? MenuService.showDish(item.id) : MenuService.hideDish(item.id);
+      await (makeAvailable ? MenuService.showDish(item.id) : MenuService.hideDish(item.id));
       Toast.success(makeAvailable ? `${item.name} is now visible` : `${item.name} is now hidden`);
-      loadMenuItems();
+      await loadMenuItems();
     } catch (err) {
       Toast.error(err.message || 'Failed to update availability');
     }
@@ -484,24 +483,23 @@
 
     try {
       const existing = id ? MenuService.getMenu().find(item => item.id === id) : null;
-      const image = selectedImageFile
-        ? await fileToDataUrl(selectedImageFile)
-        : (existing?.image || '');
 
       const dish = {
         name,
         description: els.itemDescription.value.trim(),
         category,
+        categoryId: existing?.categoryId || category,
         price,
         preparationTime: Number(els.itemPrepTime.value) || 10,
         displayOrder: Number(els.itemDisplayOrder.value) || 0,
         isVeg: els.itemIsVeg.checked,
         isBestSeller: els.itemIsBestSeller.checked,
         isAvailable: els.itemIsAvailable.checked,
-        image
+        imageFile: selectedImageFile || null
       };
 
-      id ? MenuService.updateDish(id, dish) : MenuService.addDish(dish);
+      if (id) await MenuService.updateDish(id, dish);
+      else await MenuService.addDish(dish);
       Toast.success(id ? 'Menu item updated' : 'Menu item added');
       closeItemModal();
       loadCategories();
@@ -538,15 +536,15 @@
     if (e.target === els.deleteModalOverlay) closeDeleteModal();
   });
 
-  els.deleteConfirmBtn.addEventListener('click', () => {
+  els.deleteConfirmBtn.addEventListener('click', async () => {
     if (!pendingDeleteId) return;
     els.deleteConfirmBtn.disabled = true;
     try {
-      MenuService.deleteDish(pendingDeleteId);
+      await MenuService.deleteDish(pendingDeleteId);
       Toast.success('Menu item deleted');
       closeDeleteModal();
-      loadCategories();
-      loadMenuItems();
+      await loadCategories();
+      await loadMenuItems();
     } catch (err) {
       Toast.error(err.message || 'Failed to delete menu item');
     } finally {
@@ -837,6 +835,13 @@
     });
     socket.on('bill_paid', () => {
       if (currentView === 'dashboard') loadDashboardStats();
+    });
+    socket.on('menu_updated', async () => {
+      await MenuService.refresh(true);
+      if (currentView === 'menu') {
+        await loadCategories();
+        await loadMenuItems();
+      }
     });
   }
 

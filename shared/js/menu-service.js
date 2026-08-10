@@ -1,151 +1,174 @@
 /**
- * Shared LocalStorage-backed menu repository.
- * This is the single source of truth for Admin and Customer pages.
+ * Shared Neon/API-backed menu repository.
+ * Admin writes go to PostgreSQL through the Express API.
+ * Customer pages read the same server data, so every device stays in sync.
  */
 const MenuService = (() => {
-  const STORAGE_KEY = 'muralidhar_menu';
   const CHANGE_EVENT = 'muralidhar:menu-changed';
-
-  const DEFAULT_MENU = [
-    {
-      id: 1,
-      name: 'Cha',
-      description: 'Fresh Hot Tea brewed with premium Assam tea leaves, ginger, and cardamom. Served steaming hot in traditional kulhad.',
-      price: 10,
-      image: '',
-      category: 'beverages',
-      categoryId: 'beverages',
-      isVeg: true,
-      isBestSeller: true,
-      isAvailable: true,
-      preparationTime: 5,
-      displayOrder: 1
-    },
-    {
-      id: 2,
-      name: 'Poha',
-      description: 'Fresh Gujarati Poha made with flattened rice, peanuts, curry leaves, and mustard seeds. Light, fluffy, and full of flavor.',
-      price: 30,
-      image: '',
-      category: 'breakfast',
-      categoryId: 'breakfast',
-      isVeg: true,
-      isBestSeller: true,
-      isAvailable: true,
-      preparationTime: 10,
-      displayOrder: 2
-    },
-    {
-      id: 3,
-      name: 'Roti',
-      description: 'Fresh Butter Roti made from whole wheat dough, cooked on tawa with pure desi ghee. Soft, warm, and melts in your mouth.',
-      price: 15,
-      image: '',
-      category: 'bread',
-      categoryId: 'bread',
-      isVeg: true,
-      isBestSeller: false,
-      isAvailable: true,
-      preparationTime: 8,
-      displayOrder: 3
-    }
-  ];
+  const DEFAULT_MENU = [];
+  let cache = [];
+  let loaded = false;
+  let pollTimer = null;
+  let socket = null;
 
   const clone = value => JSON.parse(JSON.stringify(value));
+  const isAdminPage = () => window.location.pathname.startsWith('/admin');
+
+  function slugifyCategory(value) {
+    return String(value || 'other')
+      .trim()
+      .toLowerCase()
+      .replace(/&/g, 'and')
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '') || 'other';
+  }
 
   function normalizeDish(dish) {
-    const category = String(dish.category || dish.categoryId || 'other').trim().toLowerCase();
+    const rawCategory = dish.category || dish.category_name || dish.categoryId || dish.category_id || 'other';
+    const category = slugifyCategory(rawCategory);
     return {
       id: Number(dish.id),
       name: String(dish.name || '').trim(),
       description: String(dish.description || '').trim(),
       price: Number(dish.price) || 0,
-      image: String(dish.image || '').trim(),
+      image: String(dish.image || dish.image_url || '').trim(),
       category,
-      categoryId: category,
-      isVeg: dish.isVeg !== false,
-      isBestSeller: Boolean(dish.isBestSeller),
-      isAvailable: dish.isAvailable !== false,
-      preparationTime: Number(dish.preparationTime) || 10,
-      displayOrder: Number(dish.displayOrder) || 0
+      categoryId: dish.categoryId ?? dish.category_id ?? category,
+      categoryLabel: String(dish.category || dish.category_name || rawCategory),
+      isVeg: dish.isVeg !== undefined ? Boolean(dish.isVeg) : Boolean(dish.is_veg),
+      isBestSeller: dish.isBestSeller !== undefined ? Boolean(dish.isBestSeller) : Boolean(dish.is_best_seller),
+      isAvailable: dish.isAvailable !== undefined ? Boolean(dish.isAvailable) : dish.is_available !== false,
+      preparationTime: Number(dish.preparationTime ?? dish.preparation_time) || 10,
+      displayOrder: Number(dish.displayOrder ?? dish.display_order) || 0
     };
   }
 
-  function initialize() {
-    if (!localStorage.getItem(STORAGE_KEY)) saveMenu(DEFAULT_MENU);
+  function setCache(menu) {
+    cache = (Array.isArray(menu) ? menu : [])
+      .map(normalizeDish)
+      .sort((a, b) => a.displayOrder - b.displayOrder || a.id - b.id);
+    loaded = true;
+    window.dispatchEvent(new CustomEvent(CHANGE_EVENT, { detail: clone(cache) }));
+    return clone(cache);
   }
 
-  function getMenu() {
-    initialize();
+  async function request(url, options = {}) {
+    const response = await fetch(url, {
+      cache: 'no-store',
+      credentials: 'same-origin',
+      ...options
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || data.success === false) {
+      throw new Error(data.message || `HTTP ${response.status}`);
+    }
+    return data;
+  }
+
+  async function refresh(forceAdmin = isAdminPage()) {
     try {
-      const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY));
-      if (!Array.isArray(parsed)) throw new Error('Stored menu is invalid');
-      return parsed.map(normalizeDish).sort((a, b) => a.displayOrder - b.displayOrder || a.id - b.id);
+      const endpoint = forceAdmin ? '/api/admin/menu' : '/api/menu';
+      const data = await request(`${endpoint}?_=${Date.now()}`);
+      return setCache(data.data || []);
     } catch (error) {
-      console.error('MenuService.getMenu:', error);
-      saveMenu(DEFAULT_MENU);
-      return clone(DEFAULT_MENU);
+      console.error('MenuService.refresh:', error);
+      if (!loaded) setCache(DEFAULT_MENU);
+      return clone(cache);
     }
   }
 
-  function saveMenu(menu) {
-    const normalized = (Array.isArray(menu) ? menu : []).map(normalizeDish);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized));
-    window.dispatchEvent(new CustomEvent(CHANGE_EVENT, { detail: clone(normalized) }));
-    return clone(normalized);
+  function getMenu() {
+    return clone(cache);
   }
-
-  function nextId(menu) {
-    return menu.reduce((max, item) => Math.max(max, Number(item.id) || 0), 0) + 1;
-  }
-
-  function addDish(dish) {
-    const menu = getMenu();
-    const created = normalizeDish({ ...dish, id: nextId(menu) });
-    saveMenu([...menu, created]);
-    return clone(created);
-  }
-
-  function updateDish(id, updates) {
-    const numericId = Number(id);
-    const menu = getMenu();
-    const index = menu.findIndex(item => item.id === numericId);
-    if (index === -1) throw new Error('Menu item not found');
-    menu[index] = normalizeDish({ ...menu[index], ...updates, id: numericId });
-    saveMenu(menu);
-    return clone(menu[index]);
-  }
-
-  function deleteDish(id) {
-    const numericId = Number(id);
-    const menu = getMenu();
-    const nextMenu = menu.filter(item => item.id !== numericId);
-    if (nextMenu.length === menu.length) throw new Error('Menu item not found');
-    saveMenu(nextMenu);
-    return true;
-  }
-
-  const hideDish = id => updateDish(id, { isAvailable: false });
-  const showDish = id => updateDish(id, { isAvailable: true });
 
   function getVisibleMenu() {
     return getMenu().filter(item => item.isAvailable);
   }
 
-  function subscribe(callback) {
-    const sameTabHandler = event => callback(clone(event.detail || getMenu()));
-    const otherTabHandler = event => {
-      if (event.key === STORAGE_KEY) callback(getMenu());
-    };
-    window.addEventListener(CHANGE_EVENT, sameTabHandler);
-    window.addEventListener('storage', otherTabHandler);
-    return () => {
-      window.removeEventListener(CHANGE_EVENT, sameTabHandler);
-      window.removeEventListener('storage', otherTabHandler);
-    };
+  function buildDishForm(dish) {
+    const form = new FormData();
+    form.append('name', dish.name || '');
+    form.append('description', dish.description || '');
+    form.append('price', String(dish.price ?? 0));
+    // Backend accepts either an existing numeric category ID or a category name/slug.
+    form.append('category_id', String(dish.categoryId || dish.category || 'other'));
+    form.append('is_veg', String(dish.isVeg !== false));
+    form.append('is_best_seller', String(Boolean(dish.isBestSeller)));
+    form.append('is_available', String(dish.isAvailable !== false));
+    form.append('preparation_time', String(dish.preparationTime || 10));
+    form.append('display_order', String(dish.displayOrder || 0));
+    if (dish.imageFile instanceof File) form.append('image', dish.imageFile);
+    return form;
   }
 
-  initialize();
+  async function addDish(dish) {
+    const data = await request('/api/admin/menu', { method: 'POST', body: buildDishForm(dish) });
+    await refresh(true);
+    return normalizeDish(data.data);
+  }
 
-  return { getMenu, getVisibleMenu, saveMenu, addDish, updateDish, deleteDish, hideDish, showDish, subscribe };
+  async function updateDish(id, updates) {
+    const data = await request(`/api/admin/menu/${Number(id)}`, {
+      method: 'PUT',
+      body: buildDishForm(updates)
+    });
+    await refresh(true);
+    return normalizeDish(data.data);
+  }
+
+  async function deleteDish(id) {
+    await request(`/api/admin/menu/${Number(id)}`, { method: 'DELETE' });
+    await refresh(true);
+    return true;
+  }
+
+  async function setAvailability(id, isAvailable) {
+    await request(`/api/admin/menu/${Number(id)}/availability`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ is_available: Boolean(isAvailable) })
+    });
+    await refresh(true);
+    return true;
+  }
+
+  const hideDish = id => setAvailability(id, false);
+  const showDish = id => setAvailability(id, true);
+
+  function subscribe(callback) {
+    const handler = event => callback(clone(event.detail || cache));
+    window.addEventListener(CHANGE_EVENT, handler);
+
+    // Cross-device realtime sync when Socket.IO is available.
+    if (!socket && typeof io === 'function') {
+      try {
+        socket = io({ transports: ['websocket', 'polling'], reconnection: true });
+        socket.on('menu_updated', () => refresh(isAdminPage()));
+      } catch (e) {
+        console.warn('MenuService socket unavailable:', e);
+      }
+    }
+
+    // Polling fallback also keeps phones updated if a socket is unavailable.
+    if (!pollTimer) {
+      pollTimer = setInterval(() => refresh(isAdminPage()), 10000);
+    }
+
+    return () => window.removeEventListener(CHANGE_EVENT, handler);
+  }
+
+  // Start loading immediately. Pages can explicitly await refresh before first render.
+  refresh(isAdminPage());
+
+  return {
+    refresh,
+    getMenu,
+    getVisibleMenu,
+    addDish,
+    updateDish,
+    deleteDish,
+    hideDish,
+    showDish,
+    subscribe
+  };
 })();

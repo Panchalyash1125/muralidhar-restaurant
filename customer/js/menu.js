@@ -82,7 +82,7 @@ const DOM = {
 // INITIALIZATION
 // ============================================
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
   // Cache DOM elements
   DOM.header = document.getElementById('header');
   DOM.tableNum = document.getElementById('tableNum');
@@ -99,7 +99,8 @@ document.addEventListener('DOMContentLoaded', () => {
   // Validate table number
   validateTable();
 
-  // Initialize menu
+  // Load the shared Neon menu before the first render.
+  await MenuService.refresh(false);
   MenuState.init();
   renderCategories();
   renderMenu();
