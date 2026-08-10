@@ -84,12 +84,35 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 // ============================================
 // STATIC FILES
 // ============================================
-// Serve all frontend modules statically
-app.use('/customer', express.static(path.join(__dirname, '..', 'customer')));
-app.use('/counter', express.static(path.join(__dirname, '..', 'counter')));
-app.use('/kitchen', express.static(path.join(__dirname, '..', 'kitchen')));
-app.use('/admin', express.static(path.join(__dirname, '..', 'admin')));
-app.use('/shared', express.static(path.join(__dirname, '..', 'shared')));
+// Serve all frontend modules statically.
+// Render can start Node from a different working directory, so resolve from this file
+// and add explicit entry routes instead of relying only on directory-index behavior.
+const PROJECT_ROOT = path.resolve(__dirname, '..');
+const FRONTEND_DIRS = {
+  customer: path.join(PROJECT_ROOT, 'customer'),
+  counter: path.join(PROJECT_ROOT, 'counter'),
+  kitchen: path.join(PROJECT_ROOT, 'kitchen'),
+  admin: path.join(PROJECT_ROOT, 'admin'),
+  shared: path.join(PROJECT_ROOT, 'shared')
+};
+
+for (const [name, dir] of Object.entries(FRONTEND_DIRS)) {
+  console.log(`[static] ${name}: ${dir} (${fs.existsSync(dir) ? 'OK' : 'MISSING'})`);
+}
+
+app.use('/customer', express.static(FRONTEND_DIRS.customer, { index: 'index.html' }));
+app.use('/counter', express.static(FRONTEND_DIRS.counter, { index: 'index.html' }));
+app.use('/kitchen', express.static(FRONTEND_DIRS.kitchen, { index: 'index.html' }));
+app.use('/admin', express.static(FRONTEND_DIRS.admin, { index: 'index.html' }));
+app.use('/shared', express.static(FRONTEND_DIRS.shared));
+
+// Explicit HTML entry points for cloud hosts / proxies.
+app.get(['/customer', '/customer/'], (req, res) => res.sendFile(path.join(FRONTEND_DIRS.customer, 'index.html')));
+app.get('/customer/index.html', (req, res) => res.sendFile(path.join(FRONTEND_DIRS.customer, 'index.html')));
+app.get(['/kitchen', '/kitchen/'], (req, res) => res.sendFile(path.join(FRONTEND_DIRS.kitchen, 'index.html')));
+app.get(['/counter', '/counter/'], (req, res) => res.sendFile(path.join(FRONTEND_DIRS.counter, 'index.html')));
+app.get(['/admin', '/admin/'], (req, res) => res.sendFile(path.join(FRONTEND_DIRS.admin, 'index.html')));
+app.get('/admin/dashboard.html', (req, res) => res.sendFile(path.join(FRONTEND_DIRS.admin, 'dashboard.html')));
 
 // ============================================
 // UPLOADS (Menu Item Images)
