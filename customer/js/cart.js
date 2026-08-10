@@ -42,13 +42,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Load the current shared Neon menu first, then reconcile the cart.
   await MenuService.refresh(false);
-  reconcileCartWithMenu();
+  reconcileCartWithMenu({ allowRemoval: MenuService.wasLastRefreshSuccessful() });
 
   // Render cart
   renderCart();
 
   MenuService.subscribe(() => {
-    reconcileCartWithMenu();
+    reconcileCartWithMenu({ allowRemoval: MenuService.wasLastRefreshSuccessful() });
     renderCart();
   });
 });
@@ -58,7 +58,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 // Reconcile and repaint when the browser restores this page from history.
 window.addEventListener('pageshow', () => {
   if (!CartDOM.cartItems) return;
-  reconcileCartWithMenu();
+  reconcileCartWithMenu({ allowRemoval: false });
   renderCart();
 });
 
@@ -66,13 +66,17 @@ window.addEventListener('pageshow', () => {
  * Synchronize cart snapshots with the current visible menu.
  * Hidden/deleted dishes are removed and edited prices/names are refreshed.
  */
-function reconcileCartWithMenu() {
+function reconcileCartWithMenu({ allowRemoval = false } = {}) {
   const visibleMenu = MenuService.getVisibleMenu();
   const menuById = new Map(visibleMenu.map(item => [item.id, item]));
+
+  // Never wipe a valid cart merely because Render/Neon is waking up, a request is rate-limited,
+  // or the phone briefly loses connectivity. Update snapshots when current data exists.
   const reconciled = CartManager.getItems()
-    .filter(cartItem => menuById.has(cartItem.id))
+    .filter(cartItem => !allowRemoval || menuById.has(cartItem.id))
     .map(cartItem => {
       const current = menuById.get(cartItem.id);
+      if (!current) return cartItem;
       return {
         ...cartItem,
         name: current.name,

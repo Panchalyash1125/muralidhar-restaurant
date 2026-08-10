@@ -1,15 +1,21 @@
 /**
  * Shared Neon/API-backed menu repository.
- * Admin writes go to PostgreSQL through the Express API.
- * Customer pages read the same server data, so every device stays in sync.
+ * - Neon/PostgreSQL is the source of truth.
+ * - Last known good menu is cached locally only as a resilience fallback.
+ * - Temporary network/429 errors NEVER replace a good menu with an empty list.
+ * - Socket.IO is primary realtime sync; slow polling is only a fallback.
  */
 const MenuService = (() => {
   const CHANGE_EVENT = 'muralidhar:menu-changed';
-  const DEFAULT_MENU = [];
+  const CACHE_KEY = 'muralidhar_menu_last_good_v3';
+  const POLL_MS = 60000; // 60s fallback. Socket.IO handles normal realtime sync.
+
   let cache = [];
   let loaded = false;
+  let lastRefreshOk = false;
   let pollTimer = null;
   let socket = null;
+  let refreshPromise = null;
 
   const clone = value => JSON.parse(JSON.stringify(value));
   const isAdminPage = () => window.location.pathname.startsWith('/admin');
@@ -43,12 +49,54 @@ const MenuService = (() => {
     };
   }
 
-  function setCache(menu) {
-    cache = (Array.isArray(menu) ? menu : [])
+  function normalizeMenu(menu) {
+    return (Array.isArray(menu) ? menu : [])
       .map(normalizeDish)
       .sort((a, b) => a.displayOrder - b.displayOrder || a.id - b.id);
+  }
+
+  function signature(menu) {
+    return JSON.stringify(menu.map(item => [
+      item.id, item.name, item.description, item.price, item.image,
+      item.category, item.categoryId, item.isVeg, item.isBestSeller,
+      item.isAvailable, item.preparationTime, item.displayOrder
+    ]));
+  }
+
+  function persistLastGood(menu) {
+    try {
+      localStorage.setItem(CACHE_KEY, JSON.stringify({ savedAt: Date.now(), menu }));
+    } catch (e) {
+      console.warn('MenuService cache write failed:', e);
+    }
+  }
+
+  function hydrateLastGood() {
+    try {
+      const raw = localStorage.getItem(CACHE_KEY);
+      if (!raw) return false;
+      const parsed = JSON.parse(raw);
+      const menu = normalizeMenu(parsed && parsed.menu);
+      cache = menu;
+      loaded = true;
+      return true;
+    } catch (e) {
+      console.warn('MenuService cache read failed:', e);
+      return false;
+    }
+  }
+
+  function setCache(menu, { notify = true, persist = true } = {}) {
+    const next = normalizeMenu(menu);
+    const changed = signature(next) !== signature(cache);
+    cache = next;
     loaded = true;
-    window.dispatchEvent(new CustomEvent(CHANGE_EVENT, { detail: clone(cache) }));
+    if (persist) persistLastGood(cache);
+
+    // Avoid repaint/flicker every polling cycle when nothing changed.
+    if (notify && changed) {
+      window.dispatchEvent(new CustomEvent(CHANGE_EVENT, { detail: clone(cache) }));
+    }
     return clone(cache);
   }
 
@@ -60,37 +108,46 @@ const MenuService = (() => {
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok || data.success === false) {
-      throw new Error(data.message || `HTTP ${response.status}`);
+      const err = new Error(data.message || `HTTP ${response.status}`);
+      err.status = response.status;
+      throw err;
     }
     return data;
   }
 
-  async function refresh(forceAdmin = isAdminPage()) {
+  async function doRefresh(forceAdmin) {
     try {
       const endpoint = forceAdmin ? '/api/admin/menu' : '/api/menu';
       const data = await request(`${endpoint}?_=${Date.now()}`);
+      lastRefreshOk = true;
       return setCache(data.data || []);
     } catch (error) {
+      lastRefreshOk = false;
       console.error('MenuService.refresh:', error);
-      if (!loaded) setCache(DEFAULT_MENU);
+
+      // Critical safety rule: never turn a temporary fetch/429 failure into an empty menu.
+      if (!loaded) hydrateLastGood();
       return clone(cache);
     }
   }
 
-  function getMenu() {
-    return clone(cache);
+  async function refresh(forceAdmin = isAdminPage()) {
+    // Deduplicate simultaneous startup/socket/poll requests in the same page.
+    if (refreshPromise) return refreshPromise;
+    refreshPromise = doRefresh(forceAdmin).finally(() => { refreshPromise = null; });
+    return refreshPromise;
   }
 
-  function getVisibleMenu() {
-    return getMenu().filter(item => item.isAvailable);
-  }
+  function getMenu() { return clone(cache); }
+  function getVisibleMenu() { return getMenu().filter(item => item.isAvailable); }
+  function isLoaded() { return loaded; }
+  function wasLastRefreshSuccessful() { return lastRefreshOk; }
 
   function buildDishForm(dish) {
     const form = new FormData();
     form.append('name', dish.name || '');
     form.append('description', dish.description || '');
     form.append('price', String(dish.price ?? 0));
-    // Backend accepts either an existing numeric category ID or a category name/slug.
     form.append('category_id', String(dish.categoryId || dish.category || 'other'));
     form.append('is_veg', String(dish.isVeg !== false));
     form.append('is_best_seller', String(Boolean(dish.isBestSeller)));
@@ -109,8 +166,7 @@ const MenuService = (() => {
 
   async function updateDish(id, updates) {
     const data = await request(`/api/admin/menu/${Number(id)}`, {
-      method: 'PUT',
-      body: buildDishForm(updates)
+      method: 'PUT', body: buildDishForm(updates)
     });
     await refresh(true);
     return normalizeDish(data.data);
@@ -139,7 +195,6 @@ const MenuService = (() => {
     const handler = event => callback(clone(event.detail || cache));
     window.addEventListener(CHANGE_EVENT, handler);
 
-    // Cross-device realtime sync when Socket.IO is available.
     if (!socket && typeof io === 'function') {
       try {
         socket = io({ transports: ['websocket', 'polling'], reconnection: true });
@@ -149,26 +204,20 @@ const MenuService = (() => {
       }
     }
 
-    // Polling fallback also keeps phones updated if a socket is unavailable.
     if (!pollTimer) {
-      pollTimer = setInterval(() => refresh(isAdminPage()), 10000);
+      pollTimer = setInterval(() => {
+        if (document.visibilityState === 'visible') refresh(isAdminPage());
+      }, POLL_MS);
     }
 
     return () => window.removeEventListener(CHANGE_EVENT, handler);
   }
 
-  // Start loading immediately. Pages can explicitly await refresh before first render.
-  refresh(isAdminPage());
+  // Hydrate instantly so navigation between menu/cart never flashes blank while network wakes up.
+  hydrateLastGood();
 
   return {
-    refresh,
-    getMenu,
-    getVisibleMenu,
-    addDish,
-    updateDish,
-    deleteDish,
-    hideDish,
-    showDish,
-    subscribe
+    refresh, getMenu, getVisibleMenu, isLoaded, wasLastRefreshSuccessful,
+    addDish, updateDish, deleteDish, hideDish, showDish, subscribe
   };
 })();

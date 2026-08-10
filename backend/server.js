@@ -64,14 +64,30 @@ app.use(cors({
 }));
 
 // Rate Limiting
-const limiter = rateLimit({
-  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000, // 15 minutes
-  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100,
+// Public restaurant screens poll/read APIs across many tables. A low global limit (100/15min)
+// causes normal restaurant use to produce HTTP 429 and blank menus. Reads therefore get a
+// generous limit, while write operations remain more tightly protected.
+const rateWindowMs = parseInt(process.env.RATE_LIMIT_WINDOW_MS, 10) || 15 * 60 * 1000;
+const readLimiter = rateLimit({
+  windowMs: rateWindowMs,
+  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS, 10) || 5000,
   message: { success: false, message: 'Too many requests, please try again later.' },
   standardHeaders: true,
   legacyHeaders: false
 });
-app.use('/api/', limiter);
+const writeLimiter = rateLimit({
+  windowMs: rateWindowMs,
+  max: parseInt(process.env.RATE_LIMIT_WRITE_MAX_REQUESTS, 10) || 500,
+  message: { success: false, message: 'Too many changes, please try again shortly.' },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+app.use('/api/', (req, res, next) => {
+  if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)) {
+    return writeLimiter(req, res, next);
+  }
+  return readLimiter(req, res, next);
+});
 
 
 // Logging
