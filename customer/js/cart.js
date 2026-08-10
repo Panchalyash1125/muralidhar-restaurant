@@ -322,7 +322,7 @@ function showCustomerDetailsModal() {
   Modal.show({
     title: 'Customer Details',
     content: `
-      <div class="phone-modal-content">
+      <form class="phone-modal-content" id="customerDetailsForm" novalidate>
         <div class="icon">👤</div>
         <h3>Enter your details</h3>
         <p>No OTP required. Enter your name and mobile number to place the order.</p>
@@ -351,14 +351,15 @@ function showCustomerDetailsModal() {
           >
         </div>
         <div class="phone-error" id="phoneError">Please enter a valid 10-digit mobile number</div>
-        <button class="send-otp-btn" id="directPlaceOrderBtn" onclick="handleCustomerDetailsSubmit()">
+        <button type="submit" class="send-otp-btn" id="directPlaceOrderBtn">
           Place Order
         </button>
-      </div>
+      </form>
     `,
     showClose: true
   });
 
+  const form = document.getElementById('customerDetailsForm');
   const nameInput = document.getElementById('customerNameInput');
   const phoneInput = document.getElementById('phoneInput');
   const nameError = document.getElementById('nameError');
@@ -370,9 +371,14 @@ function showCustomerDetailsModal() {
     phoneError.classList.remove('visible');
   });
 
-  const submitOnEnter = (e) => { if (e.key === 'Enter') handleCustomerDetailsSubmit(); };
-  nameInput.addEventListener('keypress', submitOnEnter);
-  phoneInput.addEventListener('keypress', submitOnEnter);
+  // Use a real form submit so both the visible Place Order button and the
+  // mobile keyboard action key trigger the exact same order flow.
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    handleCustomerDetailsSubmit();
+  });
+
   setTimeout(() => nameInput.focus(), 100);
 }
 
