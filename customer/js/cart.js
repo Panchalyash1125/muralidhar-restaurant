@@ -351,7 +351,7 @@ function showCustomerDetailsModal() {
           >
         </div>
         <div class="phone-error" id="phoneError">Please enter a valid 10-digit mobile number</div>
-        <button type="button" class="send-otp-btn" id="directPlaceOrderBtn" onclick="handleCustomerDetailsSubmit()">
+        <button type="button" class="send-otp-btn" id="directPlaceOrderBtn">
           Place Order
         </button>
       </form>
@@ -364,6 +364,7 @@ function showCustomerDetailsModal() {
   const phoneInput = document.getElementById('phoneInput');
   const nameError = document.getElementById('nameError');
   const phoneError = document.getElementById('phoneError');
+  const directPlaceOrderBtn = document.getElementById('directPlaceOrderBtn');
 
   // Keep the customer details for repeat orders on the same table.
   // This does NOT close/reset the table; the server keeps the running bill open
@@ -386,18 +387,55 @@ function showCustomerDetailsModal() {
   // so the keyboard action can never create an order accidentally.
   form.addEventListener('submit', (e) => {
     e.preventDefault();
-    e.stopPropagation();
+    e.stopImmediatePropagation();
     return false;
   });
+
   [nameInput, phoneInput].forEach((input) => {
     input.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
         e.preventDefault();
-        e.stopPropagation();
+        e.stopImmediatePropagation();
+        // The keyboard action NEVER places an order. It may only advance focus.
         if (input === nameInput) phoneInput.focus();
       }
-    });
+    }, true);
   });
+
+  // Android browsers sometimes treat the first tap while the numeric keyboard is open
+  // as a blur/dismiss-keyboard gesture. Listen on pointerdown so the visible orange
+  // button executes BEFORE the input loses focus. A short lock prevents the later
+  // synthetic click from creating a duplicate order.
+  let buttonGestureHandled = false;
+  const submitFromVisibleButton = (event) => {
+    if (event) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+    if (buttonGestureHandled) return;
+    buttonGestureHandled = true;
+    handleCustomerDetailsSubmit();
+    setTimeout(() => { buttonGestureHandled = false; }, 1200);
+  };
+
+  if (directPlaceOrderBtn) {
+    if (window.PointerEvent) {
+      directPlaceOrderBtn.addEventListener('pointerdown', submitFromVisibleButton, { passive: false });
+    } else {
+      directPlaceOrderBtn.addEventListener('touchstart', submitFromVisibleButton, { passive: false });
+      directPlaceOrderBtn.addEventListener('mousedown', submitFromVisibleButton);
+    }
+    // Keyboard activation of the button itself (accessibility) still works, but input
+    // Enter/Go/Arrow cannot submit the order.
+    directPlaceOrderBtn.addEventListener('click', (e) => {
+      if (buttonGestureHandled) {
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+      submitFromVisibleButton(e);
+    });
+  }
 
   setTimeout(() => (nameInput.value ? phoneInput : nameInput).focus(), 100);
 }
