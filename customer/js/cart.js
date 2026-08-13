@@ -333,7 +333,8 @@ function showCustomerDetailsModal() {
             id="customerNameInput"
             placeholder="Your name"
             maxlength="60"
-            autocomplete="name"
+            autocomplete="off"
+            autocorrect="off"
             style="padding-left: 18px;"
           >
         </div>
@@ -347,11 +348,11 @@ function showCustomerDetailsModal() {
             placeholder="9876543210"
             maxlength="10"
             inputmode="numeric"
-            autocomplete="tel"
+            autocomplete="off"
           >
         </div>
         <div class="phone-error" id="phoneError">Please enter a valid 10-digit mobile number</div>
-        <button type="button" class="send-otp-btn" id="directPlaceOrderBtn">
+        <button type="button" class="send-otp-btn" id="directPlaceOrderBtn" onclick="handleCustomerDetailsSubmit()">
           Place Order
         </button>
       </form>
@@ -364,7 +365,6 @@ function showCustomerDetailsModal() {
   const phoneInput = document.getElementById('phoneInput');
   const nameError = document.getElementById('nameError');
   const phoneError = document.getElementById('phoneError');
-  const directPlaceOrderBtn = document.getElementById('directPlaceOrderBtn');
 
   // Keep the customer details for repeat orders on the same table.
   // This does NOT close/reset the table; the server keeps the running bill open
@@ -387,53 +387,32 @@ function showCustomerDetailsModal() {
   // so the keyboard action can never create an order accidentally.
   form.addEventListener('submit', (e) => {
     e.preventDefault();
-    e.stopImmediatePropagation();
+    e.stopPropagation();
     return false;
   });
-
   [nameInput, phoneInput].forEach((input) => {
     input.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
         e.preventDefault();
-        e.stopImmediatePropagation();
-        // The keyboard action NEVER places an order. It may only advance focus.
+        e.stopPropagation();
         if (input === nameInput) phoneInput.focus();
       }
-    }, true);
+    });
   });
 
-  // Android browsers sometimes treat the first tap while the numeric keyboard is open
-  // as a blur/dismiss-keyboard gesture. Listen on pointerdown so the visible orange
-  // button executes BEFORE the input loses focus. A short lock prevents the later
-  // synthetic click from creating a duplicate order.
-  let buttonGestureHandled = false;
-  const submitFromVisibleButton = (event) => {
-    if (event) {
-      event.preventDefault();
-      event.stopPropagation();
-    }
-    if (buttonGestureHandled) return;
-    buttonGestureHandled = true;
-    handleCustomerDetailsSubmit();
-    setTimeout(() => { buttonGestureHandled = false; }, 1200);
-  };
-
-  if (directPlaceOrderBtn) {
-    if (window.PointerEvent) {
-      directPlaceOrderBtn.addEventListener('pointerdown', submitFromVisibleButton, { passive: false });
-    } else {
-      directPlaceOrderBtn.addEventListener('touchstart', submitFromVisibleButton, { passive: false });
-      directPlaceOrderBtn.addEventListener('mousedown', submitFromVisibleButton);
-    }
-    // Keyboard activation of the button itself (accessibility) still works, but input
-    // Enter/Go/Arrow cannot submit the order.
-    directPlaceOrderBtn.addEventListener('click', (e) => {
-      if (buttonGestureHandled) {
-        e.preventDefault();
-        e.stopPropagation();
-        return;
+  // On mobile, a phone number the customer has typed before can trigger the
+  // browser's own autofill suggestion strip above the keyboard. If that strip
+  // is open, the FIRST tap on any button only dismisses it (no click reaches
+  // our button at all) - the page looks like "nothing happened" even though
+  // the button code never ran. Blurring the field as soon as the finger
+  // touches the button closes that native UI a beat before the click fires,
+  // so the tap always reaches handleCustomerDetailsSubmit().
+  const placeOrderButton = document.getElementById('directPlaceOrderBtn');
+  if (placeOrderButton) {
+    placeOrderButton.addEventListener('pointerdown', () => {
+      if (document.activeElement === nameInput || document.activeElement === phoneInput) {
+        document.activeElement.blur();
       }
-      submitFromVisibleButton(e);
     });
   }
 
