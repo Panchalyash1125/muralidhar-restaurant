@@ -351,7 +351,7 @@ function showCustomerDetailsModal() {
           >
         </div>
         <div class="phone-error" id="phoneError">Please enter a valid 10-digit mobile number</div>
-        <button type="submit" class="send-otp-btn" id="directPlaceOrderBtn">
+        <button type="button" class="send-otp-btn" id="directPlaceOrderBtn" onclick="handleCustomerDetailsSubmit()">
           Place Order
         </button>
       </form>
@@ -365,21 +365,41 @@ function showCustomerDetailsModal() {
   const nameError = document.getElementById('nameError');
   const phoneError = document.getElementById('phoneError');
 
+  // Keep the customer details for repeat orders on the same table.
+  // This does NOT close/reset the table; the server keeps the running bill open
+  // until the Counter marks it paid/completed.
+  const table = URLUtils.getTableNumber();
+  const savedCustomer = Storage.get(`muralidhar_customer_${table}`);
+  if (savedCustomer) {
+    nameInput.value = savedCustomer.name || '';
+    phoneInput.value = savedCustomer.phone || '';
+  }
+
   nameInput.addEventListener('input', () => nameError.classList.remove('visible'));
   phoneInput.addEventListener('input', (e) => {
     e.target.value = e.target.value.replace(/\D/g, '').slice(0, 10);
     phoneError.classList.remove('visible');
   });
 
-  // Use a real form submit so both the visible Place Order button and the
-  // mobile keyboard action key trigger the exact same order flow.
+  // IMPORTANT: only the orange Place Order button may place an order.
+  // Mobile keyboards often send Enter/Go/Arrow as a form submit. Prevent that
+  // so the keyboard action can never create an order accidentally.
   form.addEventListener('submit', (e) => {
     e.preventDefault();
     e.stopPropagation();
-    handleCustomerDetailsSubmit();
+    return false;
+  });
+  [nameInput, phoneInput].forEach((input) => {
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        e.stopPropagation();
+        if (input === nameInput) phoneInput.focus();
+      }
+    });
   });
 
-  setTimeout(() => nameInput.focus(), 100);
+  setTimeout(() => (nameInput.value ? phoneInput : nameInput).focus(), 100);
 }
 
 function handleCustomerDetailsSubmit() {
@@ -463,8 +483,12 @@ function placeOrder(customerName, phone) {
         timestamp: Date.now(),
         total: totals.grandTotal
       });
+      Storage.set(`muralidhar_customer_${table}`, { name: customerName, phone });
 
-      CartManager.clearSession();
+      // Clear only the cart after an order. Keep the table session alive so a
+      // Continue Order is appended to the same running table bill. The table is
+      // reset on the server only when Counter completes/payment-closes the bill.
+      CartManager.clear();
       if (CartDOM.specialInstructions) CartDOM.specialInstructions.value = '';
       window.location.replace(`success.html?table=${table}&order=${encodeURIComponent(orderNumber)}`);
     })

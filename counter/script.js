@@ -164,6 +164,7 @@
     badge.textContent = statusLabel(bill.status);
     badge.classList.add(bill.status);
 
+    node.querySelector('.bill-name').textContent = bill.customerName || '—';
     node.querySelector('.bill-phone').textContent = Formatters.phone(bill.customerPhone);
     node.querySelector('.bill-time').textContent = Formatters.datetime(bill.orderTime);
 
@@ -243,6 +244,7 @@
 
     const body = `
       <div class="modal-row"><span>Table</span><span>${escapeHtml(bill.tableNumber)}</span></div>
+      <div class="modal-row"><span>Name</span><span>${escapeHtml(bill.customerName || '—')}</span></div>
       <div class="modal-row"><span>Mobile</span><span>${Formatters.phone(bill.customerPhone)}</span></div>
       <div class="modal-row"><span>Order Time</span><span>${Formatters.datetime(bill.orderTime)}</span></div>
 

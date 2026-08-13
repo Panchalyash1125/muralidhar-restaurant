@@ -472,14 +472,23 @@ app.post('/api/orders', async (req, res) => {
         const billNumber = `BILL-${Date.now().toString(36).toUpperCase()}`;
         const billResult = await db.prepare(`
           INSERT INTO bills
-            (bill_number, table_id, customer_phone, session_id, status, subtotal, gst_amount, grand_total)
-          VALUES (?, ?, ?, ?, 'open', 0, 0, 0)
-        `).run(billNumber, table.id, cleanPhone, effectiveSessionId);
+            (bill_number, table_id, customer_name, customer_phone, session_id, status, subtotal, gst_amount, grand_total)
+          VALUES (?, ?, ?, ?, ?, 'open', 0, 0, 0)
+        `).run(billNumber, table.id, cleanName, cleanPhone, effectiveSessionId);
         billId = Number(billResult.lastInsertRowid);
         isNewBill = true;
         await db.prepare("UPDATE tables SET status = 'occupied' WHERE id = ?").run(table.id);
       } else {
         billId = Number(existingSession.bill_id);
+        // Keep one running bill per table. Fill missing customer identity from
+        // the repeat order, but do not replace the original bill owner once set.
+        await db.prepare(`
+          UPDATE bills
+          SET customer_name = COALESCE(NULLIF(customer_name, ''), ?),
+              customer_phone = COALESCE(NULLIF(customer_phone, ''), ?),
+              updated_at = CURRENT_TIMESTAMP
+          WHERE id = ?
+        `).run(cleanName, cleanPhone, billId);
       }
 
       const orderResult = await db.prepare(`
@@ -810,6 +819,14 @@ app.get('/counter/orders', async (req, res) => {
   try {
     const bills = await db.prepare(`
       SELECT b.id as bill_id, b.bill_number, b.table_id, t.table_number,
+             COALESCE(NULLIF(b.customer_name, ''), (
+               SELECT o.customer_name
+               FROM bill_items bi_name
+               JOIN orders o ON o.id = bi_name.order_id
+               WHERE bi_name.bill_id = b.id AND NULLIF(o.customer_name, '') IS NOT NULL
+               ORDER BY o.created_at ASC
+               LIMIT 1
+             )) as customer_name,
              b.customer_phone, b.session_id, b.status, b.opened_at,
              b.subtotal, b.gst_amount, b.grand_total, b.total_paid
       FROM bills b
@@ -894,6 +911,7 @@ app.get('/counter/orders', async (req, res) => {
         billId: b.bill_id,
         billNumber: b.bill_number,
         tableNumber: b.table_number,
+        customerName: b.customer_name || '',
         customerPhone: b.customer_phone,
         orderTime,
         status: overallStatus(orders),
