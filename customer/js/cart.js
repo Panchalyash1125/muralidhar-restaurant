@@ -333,8 +333,7 @@ function showCustomerDetailsModal() {
             id="customerNameInput"
             placeholder="Your name"
             maxlength="60"
-            autocomplete="off"
-            autocorrect="off"
+            autocomplete="name"
             style="padding-left: 18px;"
           >
         </div>
@@ -348,11 +347,11 @@ function showCustomerDetailsModal() {
             placeholder="9876543210"
             maxlength="10"
             inputmode="numeric"
-            autocomplete="off"
+            autocomplete="tel"
           >
         </div>
         <div class="phone-error" id="phoneError">Please enter a valid 10-digit mobile number</div>
-        <button type="button" class="send-otp-btn" id="directPlaceOrderBtn" onclick="handleCustomerDetailsSubmit()">
+        <button type="button" class="send-otp-btn" id="directPlaceOrderBtn">
           Place Order
         </button>
       </form>
@@ -365,6 +364,7 @@ function showCustomerDetailsModal() {
   const phoneInput = document.getElementById('phoneInput');
   const nameError = document.getElementById('nameError');
   const phoneError = document.getElementById('phoneError');
+  const directPlaceOrderBtn = document.getElementById('directPlaceOrderBtn');
 
   // Keep the customer details for repeat orders on the same table.
   // This does NOT close/reset the table; the server keeps the running bill open
@@ -387,32 +387,59 @@ function showCustomerDetailsModal() {
   // so the keyboard action can never create an order accidentally.
   form.addEventListener('submit', (e) => {
     e.preventDefault();
-    e.stopPropagation();
+    e.stopImmediatePropagation();
     return false;
   });
+
   [nameInput, phoneInput].forEach((input) => {
     input.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
         e.preventDefault();
-        e.stopPropagation();
+        e.stopImmediatePropagation();
+        // The keyboard action NEVER places an order. It may only advance focus.
         if (input === nameInput) phoneInput.focus();
       }
-    });
+    }, true);
   });
 
-  // On mobile, a phone number the customer has typed before can trigger the
-  // browser's own autofill suggestion strip above the keyboard. If that strip
-  // is open, the FIRST tap on any button only dismisses it (no click reaches
-  // our button at all) - the page looks like "nothing happened" even though
-  // the button code never ran. Blurring the field as soon as the finger
-  // touches the button closes that native UI a beat before the click fires,
-  // so the tap always reaches handleCustomerDetailsSubmit().
-  const placeOrderButton = document.getElementById('directPlaceOrderBtn');
-  if (placeOrderButton) {
-    placeOrderButton.addEventListener('pointerdown', () => {
-      if (document.activeElement === nameInput || document.activeElement === phoneInput) {
-        document.activeElement.blur();
+  // STRICT TAP GUARD:
+  // An order is allowed ONLY when the physical pointer/touch STARTED on the
+  // orange Place Order button. This prevents a mobile keyboard-dismiss tap or
+  // layout shift from turning into a synthetic click on the button afterwards.
+  //
+  // Important: do NOT place the order on pointerdown/touchstart. We only ARM the
+  // action there and perform it on the button's normal click event.
+  let buttonPressArmed = false;
+  let placingOrderFromButton = false;
+
+  const armFromPointerOrigin = (event) => {
+    const target = event.target;
+    buttonPressArmed = !!(directPlaceOrderBtn && target && directPlaceOrderBtn.contains(target));
+  };
+
+  // Capture the original contact before the keyboard can resize/reflow the page.
+  if (window.PointerEvent) {
+    document.addEventListener('pointerdown', armFromPointerOrigin, true);
+  } else {
+    document.addEventListener('touchstart', armFromPointerOrigin, { capture: true, passive: true });
+    document.addEventListener('mousedown', armFromPointerOrigin, true);
+  }
+
+  if (directPlaceOrderBtn) {
+    directPlaceOrderBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      // Reject any synthetic/click-through event that did not begin on this button.
+      if (!buttonPressArmed || placingOrderFromButton) {
+        buttonPressArmed = false;
+        return;
       }
+
+      buttonPressArmed = false;
+      placingOrderFromButton = true;
+      handleCustomerDetailsSubmit();
+      setTimeout(() => { placingOrderFromButton = false; }, 1200);
     });
   }
 

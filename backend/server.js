@@ -116,36 +116,19 @@ for (const [name, dir] of Object.entries(FRONTEND_DIRS)) {
   console.log(`[static] ${name}: ${dir} (${fs.existsSync(dir) ? 'OK' : 'MISSING'})`);
 }
 
-// Never let phones/CDNs cache the app's HTML/JS. Without this, a phone that
-// already has an older cart.js cached can keep "fixing" bugs that were
-// already fixed on the server, because it never re-downloads the new file.
-const noCacheStatic = (dir) => express.static(dir, {
-  index: 'index.html',
-  setHeaders: (res, filePath) => {
-    if (/\.(html|js)$/i.test(filePath)) {
-      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-      res.setHeader('Pragma', 'no-cache');
-      res.setHeader('Expires', '0');
-    }
-  }
-});
-
-app.use('/customer', noCacheStatic(FRONTEND_DIRS.customer));
-app.use('/counter', noCacheStatic(FRONTEND_DIRS.counter));
-app.use('/kitchen', noCacheStatic(FRONTEND_DIRS.kitchen));
-app.use('/admin', noCacheStatic(FRONTEND_DIRS.admin));
-app.use('/shared', noCacheStatic(FRONTEND_DIRS.shared));
+app.use('/customer', express.static(FRONTEND_DIRS.customer, { index: 'index.html' }));
+app.use('/counter', express.static(FRONTEND_DIRS.counter, { index: 'index.html' }));
+app.use('/kitchen', express.static(FRONTEND_DIRS.kitchen, { index: 'index.html' }));
+app.use('/admin', express.static(FRONTEND_DIRS.admin, { index: 'index.html' }));
+app.use('/shared', express.static(FRONTEND_DIRS.shared));
 
 // Explicit HTML entry points for cloud hosts / proxies.
-const sendFileNoCache = (res, filePath) => res.sendFile(filePath, {
-  headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate', 'Pragma': 'no-cache', 'Expires': '0' }
-});
-app.get(['/customer', '/customer/'], (req, res) => sendFileNoCache(res, path.join(FRONTEND_DIRS.customer, 'index.html')));
-app.get('/customer/index.html', (req, res) => sendFileNoCache(res, path.join(FRONTEND_DIRS.customer, 'index.html')));
-app.get(['/kitchen', '/kitchen/'], (req, res) => sendFileNoCache(res, path.join(FRONTEND_DIRS.kitchen, 'index.html')));
-app.get(['/counter', '/counter/'], (req, res) => sendFileNoCache(res, path.join(FRONTEND_DIRS.counter, 'index.html')));
-app.get(['/admin', '/admin/'], (req, res) => sendFileNoCache(res, path.join(FRONTEND_DIRS.admin, 'index.html')));
-app.get('/admin/dashboard.html', (req, res) => sendFileNoCache(res, path.join(FRONTEND_DIRS.admin, 'dashboard.html')));
+app.get(['/customer', '/customer/'], (req, res) => res.sendFile(path.join(FRONTEND_DIRS.customer, 'index.html')));
+app.get('/customer/index.html', (req, res) => res.sendFile(path.join(FRONTEND_DIRS.customer, 'index.html')));
+app.get(['/kitchen', '/kitchen/'], (req, res) => res.sendFile(path.join(FRONTEND_DIRS.kitchen, 'index.html')));
+app.get(['/counter', '/counter/'], (req, res) => res.sendFile(path.join(FRONTEND_DIRS.counter, 'index.html')));
+app.get(['/admin', '/admin/'], (req, res) => res.sendFile(path.join(FRONTEND_DIRS.admin, 'index.html')));
+app.get('/admin/dashboard.html', (req, res) => res.sendFile(path.join(FRONTEND_DIRS.admin, 'dashboard.html')));
 
 // ============================================
 // UPLOADS (Menu Item Images)
