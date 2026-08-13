@@ -402,45 +402,63 @@ function showCustomerDetailsModal() {
     }, true);
   });
 
-  // STRICT TAP GUARD:
-  // An order is allowed ONLY when the physical pointer/touch STARTED on the
-  // orange Place Order button. This prevents a mobile keyboard-dismiss tap or
-  // layout shift from turning into a synthetic click on the button afterwards.
+  // STRICT BUTTON-ONLY ORDER PLACEMENT (mobile-safe):
+  // Do not listen on document/body and do not depend on a prior global pointerdown.
+  // On some Android browsers the keyboard closing/resizing can make that global
+  // "armed" flag unreliable, causing a real tap on Place Order to be ignored.
   //
-  // Important: do NOT place the order on pointerdown/touchstart. We only ARM the
-  // action there and perform it on the button's normal click event.
-  let buttonPressArmed = false;
+  // The order is now triggered ONLY by a pointer/touch release that occurs on
+  // this exact button. Keyboard Enter, tapping outside, blur, focus changes and
+  // keyboard dismissal can never place the order.
   let placingOrderFromButton = false;
 
-  const armFromPointerOrigin = (event) => {
-    const target = event.target;
-    buttonPressArmed = !!(directPlaceOrderBtn && target && directPlaceOrderBtn.contains(target));
+  const submitFromRealButtonPress = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (placingOrderFromButton || directPlaceOrderBtn.disabled) return;
+
+    placingOrderFromButton = true;
+    handleCustomerDetailsSubmit();
+
+    // If validation fails, allow another deliberate button tap immediately.
+    const name = (nameInput.value || '').trim().replace(/\s+/g, ' ');
+    const phone = (phoneInput.value || '').trim();
+    if (name.length < 2 || !Validators.isValidPhone(phone)) {
+      placingOrderFromButton = false;
+      return;
+    }
+
+    // Network success redirects away. On failure placeOrder() re-enables the button;
+    // release this local guard as well so the user can retry.
+    setTimeout(() => { placingOrderFromButton = false; }, 1500);
   };
 
-  // Capture the original contact before the keyboard can resize/reflow the page.
-  if (window.PointerEvent) {
-    document.addEventListener('pointerdown', armFromPointerOrigin, true);
-  } else {
-    document.addEventListener('touchstart', armFromPointerOrigin, { capture: true, passive: true });
-    document.addEventListener('mousedown', armFromPointerOrigin, true);
-  }
-
   if (directPlaceOrderBtn) {
-    directPlaceOrderBtn.addEventListener('click', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
+    if (window.PointerEvent) {
+      directPlaceOrderBtn.addEventListener('pointerup', submitFromRealButtonPress);
+      // Suppress the synthetic click that follows a touch/pointer release.
+      directPlaceOrderBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+      });
+    } else {
+      let touchHandled = false;
+      directPlaceOrderBtn.addEventListener('touchend', (e) => {
+        touchHandled = true;
+        submitFromRealButtonPress(e);
+        setTimeout(() => { touchHandled = false; }, 500);
+      }, { passive: false });
 
-      // Reject any synthetic/click-through event that did not begin on this button.
-      if (!buttonPressArmed || placingOrderFromButton) {
-        buttonPressArmed = false;
-        return;
-      }
-
-      buttonPressArmed = false;
-      placingOrderFromButton = true;
-      handleCustomerDetailsSubmit();
-      setTimeout(() => { placingOrderFromButton = false; }, 1200);
-    });
+      directPlaceOrderBtn.addEventListener('click', (e) => {
+        if (touchHandled) {
+          e.preventDefault();
+          e.stopPropagation();
+          return;
+        }
+        submitFromRealButtonPress(e);
+      });
+    }
   }
 
   setTimeout(() => (nameInput.value ? phoneInput : nameInput).focus(), 100);
