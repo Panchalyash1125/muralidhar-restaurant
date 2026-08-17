@@ -221,6 +221,47 @@
       50% { transform: translateY(-20px) rotate(5deg); }
     }
 
+    .entry-active-order {
+      width: 100%;
+      max-width: 420px;
+      background: white;
+      border: 1px solid rgba(255,107,0,0.18);
+      border-left: 4px solid var(--primary-orange);
+      border-radius: 16px;
+      padding: 16px;
+      margin: -12px 0 22px;
+      box-shadow: var(--shadow-sm);
+      position: relative;
+      z-index: 1;
+      text-align: left;
+    }
+
+    .entry-active-order h3 {
+      font-family: 'Poppins', sans-serif;
+      font-size: 1rem;
+      margin: 0 0 10px;
+      color: var(--text-primary);
+    }
+
+    .entry-active-item {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 5px 0;
+      color: var(--text-secondary);
+      font-size: 0.85rem;
+    }
+
+    .entry-active-total {
+      display: flex;
+      justify-content: space-between;
+      border-top: 1px solid var(--light-gray);
+      margin-top: 8px;
+      padding-top: 10px;
+      font-weight: 800;
+      color: var(--primary-orange);
+    }
+
     @media (max-width: 640px) {
       .entry-title { font-size: 1.5rem; }
       .entry-logo { width: 100px; height: 100px; }
@@ -253,9 +294,18 @@
       Table <span id="tableNumber">--</span>
     </div>
 
+    <div class="entry-active-order" id="entryActiveOrder" style="display: none;">
+      <h3>Already Ordered — Active Unpaid Bill</h3>
+      <div id="entryActiveItems"></div>
+      <div class="entry-active-total">
+        <span>Current Total</span>
+        <span id="entryActiveTotal">₹0.00</span>
+      </div>
+    </div>
+
     <!-- Start Button -->
     <button class="start-btn" id="startBtn" style="display: none;" onclick="startOrdering()">
-      Start Ordering
+      <span id="startBtnLabel">Start Ordering</span>
       <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
         <path d="M12 4l-1.41 1.41L16.17 11H4v2h12.17l-5.58 5.59L12 20l8-8z"/>
       </svg>
@@ -290,7 +340,11 @@
       const tableBadge = document.getElementById('tableBadge');
       const tableNumber = document.getElementById('tableNumber');
       const startBtn = document.getElementById('startBtn');
+      const startBtnLabel = document.getElementById('startBtnLabel');
       const errorState = document.getElementById('errorState');
+      const entryActiveOrder = document.getElementById('entryActiveOrder');
+      const entryActiveItems = document.getElementById('entryActiveItems');
+      const entryActiveTotal = document.getElementById('entryActiveTotal');
 
       // Get table number from URL
       const table = URLUtils.getTableNumber();
@@ -304,6 +358,23 @@
 
         // Store table number in session
         Storage.set('muralidhar_table', table);
+
+        // A fresh QR scan immediately restores the active unpaid table bill from
+        // PostgreSQL, even on another phone/browser.
+        ActiveTableOrder.refresh(table).then(active => {
+          if (!active || !active.isActive) return;
+          entryActiveItems.innerHTML = (active.items || []).map(item => `
+            <div class="entry-active-item">
+              <span>${Validators.sanitize(item.name)} × ${Number(item.quantity || 0)}</span>
+              <span>${Formatters.price(Number(item.totalPrice || 0))}</span>
+            </div>
+          `).join('');
+          entryActiveTotal.textContent = Formatters.price(Number(active.grandTotal || 0));
+          entryActiveOrder.style.display = 'block';
+          startBtnLabel.textContent = 'Continue Ordering';
+        }).catch(error => {
+          console.error('Could not restore active table order:', error);
+        });
 
       } else {
         // Invalid or missing table number - show error

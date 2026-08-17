@@ -30,6 +30,18 @@
       </div>
     </header>
 
+    <!-- Previous items in the active unpaid table session -->
+    <section class="active-order-panel cart-active-order hidden" id="activeOrderPanel" aria-live="polite">
+      <div class="active-order-heading">
+        <div>
+          <span class="active-order-kicker">Already Ordered</span>
+          <h2>Current Table Bill</h2>
+        </div>
+        <strong id="activeOrderTotal">₹0.00</strong>
+      </div>
+      <div class="active-order-items" id="activeOrderItems"></div>
+    </section>
+
     <!-- Cart Items -->
     <div class="cart-items" id="cartItems">
       <!-- Items rendered by JavaScript -->
@@ -59,8 +71,12 @@
         <span>GST (5%)</span>
         <span id="gst">₹0.00</span>
       </div>
+      <div class="bill-row hidden" id="previousTotalRow">
+        <span>Already Ordered Total</span>
+        <span id="previousTotal">₹0.00</span>
+      </div>
       <div class="bill-row grand-total">
-        <span>Grand Total</span>
+        <span id="grandTotalLabel">Grand Total</span>
         <span id="grandTotal">₹0.00</span>
       </div>
     </div>

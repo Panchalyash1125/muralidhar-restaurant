@@ -9,6 +9,8 @@
 // ============================================
 // DOM ELEMENTS
 // ============================================
+let ActiveCartOrder = { isActive: false, items: [], subtotal: 0, gst: 0, grandTotal: 0 };
+
 const CartDOM = {
   cartItems: null,
   emptyCart: null,
@@ -18,7 +20,13 @@ const CartDOM = {
   gst: null,
   grandTotal: null,
   specialInstructions: null,
-  placeOrderBtn: null
+  placeOrderBtn: null,
+  activeOrderPanel: null,
+  activeOrderTotal: null,
+  activeOrderItems: null,
+  previousTotalRow: null,
+  previousTotal: null,
+  grandTotalLabel: null
 };
 
 // ============================================
@@ -36,9 +44,18 @@ document.addEventListener('DOMContentLoaded', async () => {
   CartDOM.grandTotal = document.getElementById('grandTotal');
   CartDOM.specialInstructions = document.getElementById('specialInstructions');
   CartDOM.placeOrderBtn = document.getElementById('placeOrderBtn');
+  CartDOM.activeOrderPanel = document.getElementById('activeOrderPanel');
+  CartDOM.activeOrderTotal = document.getElementById('activeOrderTotal');
+  CartDOM.activeOrderItems = document.getElementById('activeOrderItems');
+  CartDOM.previousTotalRow = document.getElementById('previousTotalRow');
+  CartDOM.previousTotal = document.getElementById('previousTotal');
+  CartDOM.grandTotalLabel = document.getElementById('grandTotalLabel');
 
   // Validate table
   validateTableAccess();
+
+  // Backend is the source of truth for the unpaid running table bill.
+  await loadActiveTableOrder();
 
   // Load the current shared Neon menu first, then reconcile the cart.
   await MenuService.refresh(false);
@@ -56,8 +73,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 
 // Reconcile and repaint when the browser restores this page from history.
-window.addEventListener('pageshow', () => {
+window.addEventListener('pageshow', async () => {
   if (!CartDOM.cartItems) return;
+  await loadActiveTableOrder();
   reconcileCartWithMenu({ allowRemoval: false });
   renderCart();
 });
@@ -117,6 +135,57 @@ function validateTableAccess() {
 }
 
 // ============================================
+// ACTIVE TABLE ORDER (DATABASE)
+// ============================================
+
+async function loadActiveTableOrder() {
+  const table = URLUtils.getTableNumber();
+  if (!Validators.isValidTable(table)) return ActiveCartOrder;
+
+  try {
+    const active = await ActiveTableOrder.refresh(table);
+    ActiveCartOrder = active && active.isActive
+      ? active
+      : { isActive: false, items: [], subtotal: 0, gst: 0, grandTotal: 0 };
+  } catch (error) {
+    console.error('Failed to restore active table order:', error);
+    ActiveCartOrder = { isActive: false, items: [], subtotal: 0, gst: 0, grandTotal: 0 };
+  }
+
+  renderActiveTableOrder();
+  return ActiveCartOrder;
+}
+
+function renderActiveTableOrder() {
+  if (!CartDOM.activeOrderPanel) return;
+
+  if (!ActiveCartOrder.isActive) {
+    CartDOM.activeOrderPanel.classList.add('hidden');
+    if (CartDOM.placeOrderBtn) CartDOM.placeOrderBtn.innerHTML = `
+      Place Order
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M12 4l-1.41 1.41L16.17 11H4v2h12.17l-5.58 5.59L12 20l8-8z"/>
+      </svg>`;
+    return;
+  }
+
+  CartDOM.activeOrderTotal.textContent = Formatters.price(Number(ActiveCartOrder.grandTotal || 0));
+  CartDOM.activeOrderItems.innerHTML = (ActiveCartOrder.items || []).map(item => `
+    <div class="active-order-item">
+      <span>${Validators.sanitize(item.name)} <strong>× ${Number(item.quantity || 0)}</strong></span>
+      <span>${Formatters.price(Number(item.totalPrice || 0))}</span>
+    </div>
+  `).join('');
+  CartDOM.activeOrderPanel.classList.remove('hidden');
+
+  if (CartDOM.placeOrderBtn) CartDOM.placeOrderBtn.innerHTML = `
+    Continue Order
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M12 4l-1.41 1.41L16.17 11H4v2h12.17l-5.58 5.59L12 20l8-8z"/>
+    </svg>`;
+}
+
+// ============================================
 // RENDER CART
 // ============================================
 
@@ -137,6 +206,7 @@ function renderCart() {
   CartDOM.emptyCart.classList.add('hidden');
   CartDOM.cartItems.classList.remove('hidden');
   CartDOM.billSummary.classList.remove('hidden');
+  CartDOM.placeOrderBtn.disabled = false;
 
   // Render items
   CartDOM.cartItems.innerHTML = cart.map((item, index) => createCartItemHTML(item, index)).join('');
@@ -221,9 +291,24 @@ function generateCartPlaceholder(name) {
 // ============================================
 
 function updateBillSummary(totals) {
+  const previousTotal = ActiveCartOrder.isActive ? Number(ActiveCartOrder.grandTotal || 0) : 0;
+  const updatedGrandTotal = previousTotal + Number(totals.grandTotal || 0);
+
+  // Subtotal/GST describe only the NEW batch; the grand total includes the
+  // existing unpaid table bill so the customer sees the running amount.
   CartDOM.subtotal.textContent = Formatters.price(totals.subtotal);
   CartDOM.gst.textContent = Formatters.price(totals.gst);
-  CartDOM.grandTotal.textContent = Formatters.price(totals.grandTotal);
+  CartDOM.grandTotal.textContent = Formatters.price(updatedGrandTotal);
+
+  if (CartDOM.previousTotalRow) {
+    CartDOM.previousTotalRow.classList.toggle('hidden', !ActiveCartOrder.isActive);
+  }
+  if (CartDOM.previousTotal) {
+    CartDOM.previousTotal.textContent = Formatters.price(previousTotal);
+  }
+  if (CartDOM.grandTotalLabel) {
+    CartDOM.grandTotalLabel.textContent = ActiveCartOrder.isActive ? 'Updated Grand Total' : 'Grand Total';
+  }
 }
 
 // ============================================
@@ -231,7 +316,9 @@ function updateBillSummary(totals) {
 // ============================================
 
 function attachCartListeners() {
+  if (CartDOM.cartItems.dataset.listenerAttached === 'true') return;
   CartDOM.cartItems.addEventListener('click', handleCartAction);
+  CartDOM.cartItems.dataset.listenerAttached = 'true';
 }
 
 function handleCartAction(e) {
@@ -325,7 +412,9 @@ function showCustomerDetailsModal() {
       <form class="phone-modal-content" id="customerDetailsForm" novalidate>
         <div class="icon">👤</div>
         <h3>Enter your details</h3>
-        <p>No OTP required. Enter your name and mobile number to place the order.</p>
+        <p>${ActiveCartOrder.isActive
+          ? 'This table already has an unpaid bill. Confirm the customer details to add this new batch.'
+          : 'No OTP required. Enter your name and mobile number to place the order.'}</p>
         <div class="phone-input-wrapper" style="margin-bottom: 12px;">
           <input
             type="text"
@@ -352,7 +441,7 @@ function showCustomerDetailsModal() {
         </div>
         <div class="phone-error" id="phoneError">Please enter a valid 10-digit mobile number</div>
         <button type="button" class="send-otp-btn" id="directPlaceOrderBtn">
-          Place Order
+          ${ActiveCartOrder.isActive ? 'Continue Order' : 'Place Order'}
         </button>
       </form>
     `,
@@ -370,7 +459,9 @@ function showCustomerDetailsModal() {
   // This does NOT close/reset the table; the server keeps the running bill open
   // until the Counter marks it paid/completed.
   const table = URLUtils.getTableNumber();
-  const savedCustomer = Storage.get(`muralidhar_customer_${table}`);
+  const savedCustomer = ActiveCartOrder.isActive
+    ? { name: ActiveCartOrder.customerName, phone: ActiveCartOrder.customerPhone }
+    : null;
   if (savedCustomer) {
     nameInput.value = savedCustomer.name || '';
     phoneInput.value = savedCustomer.phone || '';
@@ -501,9 +592,8 @@ function placeOrder(customerName, phone) {
   const cart = CartManager.getItems();
   const totals = CartManager.getTotals();
   const instructions = CartDOM.specialInstructions.value.trim();
-  const sessionId = CartManager.getSessionId();
 
-  Loading.show('Placing your order...');
+  Loading.show(ActiveCartOrder.isActive ? 'Adding to your table order...' : 'Placing your order...');
 
   const orderData = {
     table_number: parseInt(table),
@@ -525,7 +615,7 @@ function placeOrder(customerName, phone) {
     gst: totals.gst,
     grand_total: totals.grandTotal,
     special_instructions: instructions,
-    session_id: sessionId
+    expected_bill_id: ActiveCartOrder.isActive ? ActiveCartOrder.billId : null
   };
 
   API.request('/orders', {
@@ -537,15 +627,21 @@ function placeOrder(customerName, phone) {
       if (!res || !res.success) throw new Error((res && res.message) || 'Failed to place order');
 
       const orderNumber = res.data.orderNumber;
+      const runningTotal = Number(res.data.runningGrandTotal ?? totals.grandTotal);
+      if (res.data.sessionId) CartManager.setSessionId(res.data.sessionId);
       Storage.set('muralidhar_last_order', {
         orderNumber,
         table,
-        name: customerName,
-        phone,
+        name: ActiveCartOrder.isActive ? (ActiveCartOrder.customerName || customerName) : customerName,
+        phone: ActiveCartOrder.isActive ? (ActiveCartOrder.customerPhone || phone) : phone,
         timestamp: Date.now(),
-        total: totals.grandTotal
+        total: runningTotal,
+        isAdditional: Boolean(res.data.isAdditional)
       });
-      Storage.set(`muralidhar_customer_${table}`, { name: customerName, phone });
+      Storage.set(`muralidhar_customer_${table}`, {
+        name: ActiveCartOrder.isActive ? (ActiveCartOrder.customerName || customerName) : customerName,
+        phone: ActiveCartOrder.isActive ? (ActiveCartOrder.customerPhone || phone) : phone
+      });
 
       // Clear only the cart after an order. Keep the table session alive so a
       // Continue Order is appended to the same running table bill. The table is
@@ -561,7 +657,7 @@ function placeOrder(customerName, phone) {
       const button = document.getElementById('directPlaceOrderBtn');
       if (button) {
         button.disabled = false;
-        button.textContent = 'Place Order';
+        button.textContent = ActiveCartOrder.isActive ? 'Continue Order' : 'Place Order';
       }
     });
 }

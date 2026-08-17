@@ -191,7 +191,7 @@
 
     node.querySelector('.order-number').textContent = `#${order.order_number}`;
     node.querySelector('.order-table').textContent = order.table_number
-      ? `Table ${order.table_number}`
+      ? `Table ${order.table_number}${order.is_additional ? ' • Additional Order' : ''}`
       : '';
 
     const timerEl = node.querySelector('.order-timer');

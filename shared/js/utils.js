@@ -454,18 +454,71 @@ const CartManager = {
   },
 
   getSessionId() {
-    const key = this.getSessionKey();
-    let session = Storage.get(key);
-    if (!session) {
-      session = `session_${this.getTableNumber() || 'unknown'}_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
-      Storage.set(key, session);
-    }
-    return session;
+    return Storage.get(this.getSessionKey());
+  },
+
+  setSessionId(sessionId) {
+    if (sessionId) Storage.set(this.getSessionKey(), sessionId);
+  },
+
+  clearSessionId() {
+    Storage.remove(this.getSessionKey());
   },
 
   clearSession() {
-    Storage.remove(this.getSessionKey());
+    this.clearSessionId();
     this.clear();
+  }
+};
+
+// ============================================
+// ACTIVE TABLE ORDER (BACKEND SOURCE OF TRUTH)
+// ============================================
+const ActiveTableOrder = {
+  current: null,
+
+  getCacheKey(table = URLUtils.getTableNumber()) {
+    return `muralidhar_active_order_table_${table}`;
+  },
+
+  getCached(table = URLUtils.getTableNumber()) {
+    if (this.current && Number(this.current.tableNumber) === Number(table)) return this.current;
+    return Storage.get(this.getCacheKey(table));
+  },
+
+  async refresh(table = URLUtils.getTableNumber()) {
+    if (!Validators.isValidTable(Number(table))) {
+      this.current = { isActive: false, tableNumber: table };
+      return this.current;
+    }
+
+    const cacheKey = this.getCacheKey(table);
+    const previousActive = Storage.get(cacheKey);
+    const res = await API.get(`/tables/${Number(table)}/active-order`);
+    const active = (res && res.data) || { isActive: false, tableNumber: Number(table) };
+    this.current = active;
+
+    // If Counter closed the previous bill (or a new customer already started a
+    // different bill), discard any unsent cart from that old table session.
+    const activeBillChanged = previousActive && previousActive.isActive &&
+      (!active.isActive || Number(previousActive.billId) !== Number(active.billId));
+    if (activeBillChanged) CartManager.clear();
+
+    if (active.isActive) {
+      Storage.set(cacheKey, active);
+      Storage.set(`muralidhar_customer_${table}`, {
+        name: active.customerName || '',
+        phone: active.customerPhone || ''
+      });
+      CartManager.setSessionId(active.sessionId);
+    } else {
+      Storage.remove(cacheKey);
+      Storage.remove(`muralidhar_customer_${table}`);
+      // A paid/closed table must not reuse the previous customer's session id.
+      CartManager.clearSessionId();
+    }
+
+    return active;
   }
 };
 

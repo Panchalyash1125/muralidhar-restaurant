@@ -75,7 +75,11 @@ const DOM = {
   noResults: null,
   floatingCart: null,
   cartCount: null,
-  cartPrice: null
+  cartPrice: null,
+  activeOrderPanel: null,
+  activeOrderTable: null,
+  activeOrderTotal: null,
+  activeOrderItems: null
 };
 
 // ============================================
@@ -95,9 +99,16 @@ document.addEventListener('DOMContentLoaded', async () => {
   DOM.floatingCart = document.getElementById('floatingCart');
   DOM.cartCount = document.getElementById('cartCount');
   DOM.cartPrice = document.getElementById('cartPrice');
+  DOM.activeOrderPanel = document.getElementById('activeOrderPanel');
+  DOM.activeOrderTable = document.getElementById('activeOrderTable');
+  DOM.activeOrderTotal = document.getElementById('activeOrderTotal');
+  DOM.activeOrderItems = document.getElementById('activeOrderItems');
 
   // Validate table number
   validateTable();
+
+  // Restore any unpaid table bill directly from PostgreSQL before rendering the menu.
+  await loadActiveTableOrder();
 
   // Load the shared Neon menu before the first render.
   await MenuService.refresh(false);
@@ -126,8 +137,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 });
 
 // Refresh quantities and totals when returning from Cart/Success via browser history.
-window.addEventListener('pageshow', () => {
+window.addEventListener('pageshow', async () => {
   if (!DOM.foodGrid) return;
+  await loadActiveTableOrder();
   MenuState.init();
   renderCategories();
   renderMenu();
@@ -159,6 +171,44 @@ function validateTable() {
 
   // Store for session
   Storage.set('muralidhar_table', table);
+}
+
+// ============================================
+// ACTIVE TABLE ORDER
+// ============================================
+
+async function loadActiveTableOrder() {
+  const table = URLUtils.getTableNumber();
+  if (!Validators.isValidTable(table) || !DOM.activeOrderPanel) return null;
+
+  try {
+    const active = await ActiveTableOrder.refresh(table);
+    renderActiveOrder(active);
+    return active;
+  } catch (error) {
+    console.error('Failed to load active table order:', error);
+    // Menu remains usable if the active-order status request temporarily fails.
+    DOM.activeOrderPanel.classList.add('hidden');
+    return null;
+  }
+}
+
+function renderActiveOrder(active) {
+  if (!DOM.activeOrderPanel) return;
+  if (!active || !active.isActive) {
+    DOM.activeOrderPanel.classList.add('hidden');
+    return;
+  }
+
+  DOM.activeOrderTable.textContent = active.tableNumber;
+  DOM.activeOrderTotal.textContent = Formatters.price(Number(active.grandTotal || 0));
+  DOM.activeOrderItems.innerHTML = (active.items || []).map(item => `
+    <div class="active-order-item">
+      <span>${Validators.sanitize(item.name)} <strong>× ${Number(item.quantity || 0)}</strong></span>
+      <span>${Formatters.price(Number(item.totalPrice || 0))}</span>
+    </div>
+  `).join('');
+  DOM.activeOrderPanel.classList.remove('hidden');
 }
 
 // ============================================

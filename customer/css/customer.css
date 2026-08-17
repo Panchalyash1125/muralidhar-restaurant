@@ -198,6 +198,90 @@
 }
 
 /* ============================================
+   ACTIVE TABLE ORDER SUMMARY
+   ============================================ */
+.active-order-panel {
+  margin: 16px;
+  padding: 18px;
+  background: var(--white);
+  border: 1px solid var(--primary-orange-pale);
+  border-left: 4px solid var(--primary-orange);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+.active-order-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.active-order-heading h2 {
+  margin: 2px 0 0;
+  font-family: 'Poppins', sans-serif;
+  font-size: 1.05rem;
+  color: var(--text-primary);
+}
+
+.active-order-heading strong {
+  color: var(--primary-orange);
+  font-family: 'Poppins', sans-serif;
+  font-size: 1.05rem;
+  white-space: nowrap;
+}
+
+.active-order-kicker {
+  color: var(--secondary-green);
+  font-size: 0.75rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.active-order-items {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.active-order-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--light-gray);
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.active-order-item:last-child {
+  border-bottom: none;
+}
+
+.active-order-item strong {
+  color: var(--text-primary);
+  font-weight: 700;
+}
+
+.active-order-note {
+  margin: 12px 0 0;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.cart-active-order {
+  margin-bottom: 0;
+}
+
+@media (max-width: 480px) {
+  .active-order-heading { align-items: center; }
+  .active-order-panel { margin: 12px 16px; }
+}
+
+/* ============================================
    MENU SECTION
    ============================================ */
 .menu-section {

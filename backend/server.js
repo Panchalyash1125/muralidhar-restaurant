@@ -14,6 +14,7 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 const rateLimit = require('express-rate-limit');
 const multer = require('multer');
+const { randomUUID } = require('crypto');
 require('dotenv').config();
 
 const { Server } = require('socket.io');
@@ -409,7 +410,97 @@ async function resolveOrderMenuItem(item) {
   return Number(menuItem.id);
 }
 
-// Place Order
+// Return the one active unpaid table session from PostgreSQL.
+// The customer UI uses this endpoint after every scan/reload, so active-order
+// persistence never depends on browser localStorage.
+app.get('/api/tables/:tableNumber/active-order', async (req, res) => {
+  try {
+    const tableNumber = Number(req.params.tableNumber);
+    if (!Number.isInteger(tableNumber) || tableNumber < 1 || tableNumber > 12) {
+      return res.status(400).json({ success: false, message: 'Invalid table number' });
+    }
+
+    const bill = await db.prepare(`
+      SELECT b.id as bill_id, b.bill_number, b.table_id, t.table_number,
+             b.customer_name, b.customer_phone, b.session_id, b.status,
+             b.subtotal, b.gst_amount, b.discount_amount, b.grand_total,
+             b.opened_at, b.updated_at
+      FROM bills b
+      JOIN tables t ON t.id = b.table_id
+      WHERE t.table_number = ? AND b.status = 'open'
+      ORDER BY b.opened_at ASC, b.id ASC
+      LIMIT 1
+    `).get(tableNumber);
+
+    if (!bill) {
+      return res.json({
+        success: true,
+        data: { isActive: false, tableNumber }
+      });
+    }
+
+    const itemRows = await db.prepare(`
+      SELECT mi.id as menu_item_id, mi.name,
+             SUM(oi.quantity)::int as quantity,
+             SUM(oi.total_price) as total_price,
+             MIN(oi.unit_price) as unit_price
+      FROM bill_items bi
+      JOIN order_items oi ON oi.order_id = bi.order_id
+      JOIN menu_items mi ON mi.id = oi.menu_item_id
+      WHERE bi.bill_id = ?
+      GROUP BY mi.id, mi.name
+      ORDER BY MIN(oi.created_at), mi.name
+    `).all(bill.bill_id);
+
+    const orderRows = await db.prepare(`
+      SELECT o.id, o.order_number, o.status, o.created_at
+      FROM bill_items bi
+      JOIN orders o ON o.id = bi.order_id
+      WHERE bi.bill_id = ?
+      ORDER BY o.created_at ASC, o.id ASC
+    `).all(bill.bill_id);
+
+    res.json({
+      success: true,
+      data: {
+        isActive: true,
+        billId: bill.bill_id,
+        billNumber: bill.bill_number,
+        tableNumber: bill.table_number,
+        sessionId: bill.session_id,
+        customerName: bill.customer_name || '',
+        customerPhone: bill.customer_phone || '',
+        paymentStatus: 'unpaid',
+        status: bill.status,
+        subtotal: Number(bill.subtotal || 0),
+        gst: Number(bill.gst_amount || 0),
+        discount: Number(bill.discount_amount || 0),
+        grandTotal: Number(bill.grand_total || 0),
+        openedAt: bill.opened_at,
+        updatedAt: bill.updated_at,
+        items: itemRows.map(row => ({
+          menuItemId: row.menu_item_id,
+          name: row.name,
+          quantity: Number(row.quantity || 0),
+          unitPrice: Number(row.unit_price || 0),
+          totalPrice: Number(row.total_price || 0)
+        })),
+        orders: orderRows.map((order, index) => ({
+          orderId: order.id,
+          orderNumber: order.order_number,
+          status: order.status,
+          createdAt: order.created_at,
+          isAdditional: index > 0
+        }))
+      }
+    });
+  } catch (error) {
+    console.error('Active table order error:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch active table order' });
+  }
+});
+
+// Place Order / Continue Order
 app.post('/api/orders', async (req, res) => {
   try {
     const {
@@ -418,7 +509,7 @@ app.post('/api/orders', async (req, res) => {
       customer_phone,
       items,
       special_instructions,
-      session_id
+      expected_bill_id
     } = req.body;
 
     const cleanName = String(customer_name || '').trim().replace(/\s+/g, ' ');
@@ -428,7 +519,15 @@ app.post('/api/orders', async (req, res) => {
     }
 
     const placeOrderTransaction = db.transaction(async () => {
-      const table = await db.prepare('SELECT id FROM tables WHERE table_number = ?').get(table_number);
+      // Lock this table row for the duration of the transaction. Concurrent taps,
+      // phones, or browser requests for the SAME table are serialized, preventing
+      // two open bills from being created at the same time.
+      const table = await db.prepare(`
+        SELECT id, table_number, status
+        FROM tables
+        WHERE table_number = ?
+        FOR UPDATE
+      `).get(table_number);
       if (!table) throw new Error('Invalid table number');
 
       const normalizedItems = await Promise.all(items.map(async item => {
@@ -448,49 +547,104 @@ app.post('/api/orders', async (req, res) => {
         };
       }));
 
-      // Calculate totals on the server instead of trusting browser values.
-      const subtotal = normalizedItems.reduce((sum, item) => sum + item.quantity * item.price, 0);
+      // Calculate only THIS kitchen batch on the server. The running bill below
+      // adds these totals to the previous unpaid table total.
+      const subtotal = Number(normalizedItems.reduce((sum, item) => sum + item.quantity * item.price, 0).toFixed(2));
       const gst = Number((subtotal * 0.05).toFixed(2));
       const grandTotal = Number((subtotal + gst).toFixed(2));
-      const effectiveSessionId = session_id || `session_${Date.now()}`;
-      const orderNumber = `ORD-${Date.now().toString(36).toUpperCase()}`;
+      const orderNumber = `ORD-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 5).toUpperCase()}`;
 
-      // A table can have only one running bill at a time. Any repeat order
-      // from the same table is appended to that existing open bill, even if
-      // the customer enters a different phone number on the next order.
-      const existingSession = await db.prepare(`
-        SELECT b.id as bill_id
-        FROM bills b
-        WHERE b.table_id = ? AND b.status = 'open'
-        ORDER BY b.created_at DESC LIMIT 1
+      // The OPEN bill is the active table session. Kitchen order completion does
+      // not close it; only payment/close on the Counter does.
+      const existingBill = await db.prepare(`
+        SELECT id, bill_number, customer_name, customer_phone, session_id,
+               subtotal, gst_amount, grand_total
+        FROM bills
+        WHERE table_id = ? AND status = 'open'
+        ORDER BY opened_at ASC, id ASC
+        LIMIT 1
       `).get(table.id);
 
-      let billId;
-      let isNewBill = false;
+      // A Continue Order is tied to the bill the customer actually loaded. If
+      // Counter paid that bill before this click reached the server, never turn
+      // the stale click into a brand-new customer session.
+      const expectedBillId = Number(expected_bill_id || 0);
+      if (expectedBillId > 0 && (!existingBill || Number(existingBill.id) !== expectedBillId)) {
+        const staleSession = new Error('This table bill was already closed or changed. Please reopen the table QR before ordering again.');
+        staleSession.statusCode = 409;
+        throw staleSession;
+      }
 
-      if (!existingSession) {
-        const billNumber = `BILL-${Date.now().toString(36).toUpperCase()}`;
+      let billId;
+      let effectiveSessionId;
+      let sessionCustomerName;
+      let sessionCustomerPhone;
+      let isNewBill = false;
+      let priorOrderCount = 0;
+
+      if (!existingBill) {
+        effectiveSessionId = `tbl${table.id}-${randomUUID()}`;
+        sessionCustomerName = cleanName;
+        sessionCustomerPhone = cleanPhone;
+        const billNumber = `BILL-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 5).toUpperCase()}`;
         const billResult = await db.prepare(`
           INSERT INTO bills
             (bill_number, table_id, customer_name, customer_phone, session_id, status, subtotal, gst_amount, grand_total)
           VALUES (?, ?, ?, ?, ?, 'open', 0, 0, 0)
-        `).run(billNumber, table.id, cleanName, cleanPhone, effectiveSessionId);
+        `).run(billNumber, table.id, sessionCustomerName, sessionCustomerPhone, effectiveSessionId);
         billId = Number(billResult.lastInsertRowid);
         isNewBill = true;
+
+        await db.prepare(`
+          INSERT INTO sessions
+            (session_id, table_id, customer_name, customer_phone, bill_id, is_active)
+          VALUES (?, ?, ?, ?, ?, TRUE)
+          ON CONFLICT(session_id) DO UPDATE SET
+            table_id = excluded.table_id,
+            customer_name = excluded.customer_name,
+            customer_phone = excluded.customer_phone,
+            bill_id = excluded.bill_id,
+            is_active = TRUE,
+            ended_at = NULL
+        `).run(effectiveSessionId, table.id, sessionCustomerName, sessionCustomerPhone, billId);
+
         await db.prepare("UPDATE tables SET status = 'occupied' WHERE id = ?").run(table.id);
       } else {
-        billId = Number(existingSession.bill_id);
-        // Keep one running bill per table. Fill missing customer identity from
-        // the repeat order, but do not replace the original bill owner once set.
+        billId = Number(existingBill.id);
+        effectiveSessionId = existingBill.session_id;
+        sessionCustomerName = existingBill.customer_name || cleanName;
+        sessionCustomerPhone = existingBill.customer_phone || cleanPhone;
+
+        // Preserve the original bill owner, but repair blank identity fields from
+        // older deployments so customer/counter screens stay complete.
         await db.prepare(`
           UPDATE bills
           SET customer_name = COALESCE(NULLIF(customer_name, ''), ?),
               customer_phone = COALESCE(NULLIF(customer_phone, ''), ?),
               updated_at = CURRENT_TIMESTAMP
           WHERE id = ?
-        `).run(cleanName, cleanPhone, billId);
+        `).run(sessionCustomerName, sessionCustomerPhone, billId);
+
+        const countRow = await db.prepare('SELECT COUNT(*) as c FROM bill_items WHERE bill_id = ?').get(billId);
+        priorOrderCount = Number(countRow.c || 0);
+
+        // Old deployments may have an open bill but no sessions row. Repair it
+        // in-place without changing the schema or losing historical orders.
+        await db.prepare(`
+          INSERT INTO sessions
+            (session_id, table_id, customer_name, customer_phone, bill_id, is_active)
+          VALUES (?, ?, ?, ?, ?, TRUE)
+          ON CONFLICT(session_id) DO UPDATE SET
+            bill_id = excluded.bill_id,
+            is_active = TRUE,
+            ended_at = NULL
+        `).run(effectiveSessionId, table.id, sessionCustomerName, sessionCustomerPhone, billId);
+
+        await db.prepare("UPDATE tables SET status = 'occupied' WHERE id = ?").run(table.id);
       }
 
+      // Every additional kitchen batch is a separate orders row, but all rows use
+      // the SAME table session_id and link to the SAME running bill.
       const orderResult = await db.prepare(`
         INSERT INTO orders
           (order_number, table_id, customer_name, customer_phone, session_id, status,
@@ -499,8 +653,8 @@ app.post('/api/orders', async (req, res) => {
       `).run(
         orderNumber,
         table.id,
-        cleanName,
-        cleanPhone,
+        sessionCustomerName,
+        sessionCustomerPhone,
         effectiveSessionId,
         subtotal,
         gst,
@@ -532,17 +686,38 @@ app.post('/api/orders', async (req, res) => {
         WHERE id = ?
       `).run(subtotal, gst, grandTotal, billId);
 
-      return { orderId, orderNumber, billId, isNewBill, subtotal, gst, grandTotal, normalizedItems };
+      const runningBill = await db.prepare(`
+        SELECT subtotal, gst_amount, grand_total FROM bills WHERE id = ?
+      `).get(billId);
+
+      return {
+        orderId,
+        orderNumber,
+        billId,
+        sessionId: effectiveSessionId,
+        customerName: sessionCustomerName,
+        customerPhone: sessionCustomerPhone,
+        isNewBill,
+        isAdditional: priorOrderCount > 0,
+        subtotal,
+        gst,
+        grandTotal,
+        runningGrandTotal: Number(runningBill.grand_total || 0),
+        normalizedItems
+      };
     });
 
     const result = await placeOrderTransaction();
 
+    // Kitchen receives ONLY this newly added batch. Old items remain in the bill
+    // but are not re-sent as a new preparation request.
     io.to('kitchen').emit('new_order', {
       orderId: result.orderId,
       orderNumber: result.orderNumber,
       tableNumber: table_number,
-      customerName: cleanName,
-      customerPhone: cleanPhone,
+      customerName: result.customerName,
+      customerPhone: result.customerPhone,
+      isAdditional: result.isAdditional,
       items: result.normalizedItems.map(({ databaseMenuItemId, ...item }) => item),
       total: result.grandTotal,
       specialInstructions: special_instructions,
@@ -552,13 +727,14 @@ app.post('/api/orders', async (req, res) => {
     io.to('counter').emit('bill_update', {
       billId: result.billId,
       tableNumber: table_number,
-      customerName: cleanName,
-      customerPhone: cleanPhone,
+      customerName: result.customerName,
+      customerPhone: result.customerPhone,
       isNewBill: result.isNewBill,
-      total: result.grandTotal
+      isAdditional: result.isAdditional,
+      batchTotal: result.grandTotal,
+      runningGrandTotal: result.runningGrandTotal
     });
 
-    // Keep the Admin dashboard in sync immediately after an order is placed.
     io.to('admin').emit('dashboard_update', {
       reason: 'order_created',
       orderId: result.orderId,
@@ -567,21 +743,26 @@ app.post('/api/orders', async (req, res) => {
 
     res.json({
       success: true,
-      message: 'Order placed successfully',
+      message: result.isAdditional ? 'Additional order added to active table session' : 'Order placed successfully',
       data: {
         orderId: result.orderId,
         orderNumber: result.orderNumber,
         billId: result.billId,
+        sessionId: result.sessionId,
         isNewBill: result.isNewBill,
+        isAdditional: result.isAdditional,
+        batchTotal: result.grandTotal,
+        runningGrandTotal: result.runningGrandTotal,
         estimatedTime: 15
       }
     });
   } catch (error) {
     console.error('Order error:', error);
     const isValidationError = /Invalid|must include|required|quantity|price/i.test(error.message);
-    res.status(isValidationError ? 400 : 500).json({
+    const statusCode = error.statusCode || (isValidationError ? 400 : 500);
+    res.status(statusCode).json({
       success: false,
-      message: isValidationError ? error.message : 'Failed to place order'
+      message: statusCode < 500 ? error.message : 'Failed to place order'
     });
   }
 });
@@ -621,7 +802,15 @@ app.get('/api/orders/:id(\\d+)', async (req, res) => {
 app.get('/api/orders/active', async (req, res) => {
   try {
     const orders = await db.prepare(`
-      SELECT o.*, t.table_number,
+      SELECT o.*, t.table_number, bi.bill_id,
+        EXISTS (
+          SELECT 1
+          FROM bill_items earlier_bi
+          JOIN orders earlier_o ON earlier_o.id = earlier_bi.order_id
+          WHERE earlier_bi.bill_id = bi.bill_id
+            AND (earlier_o.created_at < o.created_at
+                 OR (earlier_o.created_at = o.created_at AND earlier_o.id < o.id))
+        ) as is_additional,
         json_agg(json_build_object(
           'name', mi.name,
           'quantity', oi.quantity,
@@ -629,11 +818,13 @@ app.get('/api/orders/active', async (req, res) => {
         ) ORDER BY oi.id) as items
       FROM orders o
       JOIN tables t ON o.table_id = t.id
+      JOIN bill_items bi ON bi.order_id = o.id
+      JOIN bills b ON b.id = bi.bill_id AND b.status = 'open'
       JOIN order_items oi ON o.id = oi.order_id
       JOIN menu_items mi ON oi.menu_item_id = mi.id
       WHERE o.status IN ('pending', 'accepted', 'preparing', 'ready')
-      GROUP BY o.id, t.table_number
-      ORDER BY o.created_at DESC
+      GROUP BY o.id, t.table_number, bi.bill_id
+      ORDER BY o.created_at ASC, o.id ASC
     `).all();
 
     res.json({ success: true, count: orders.length, data: orders });
@@ -915,6 +1106,7 @@ app.get('/counter/orders', async (req, res) => {
         customerPhone: b.customer_phone,
         orderTime,
         status: overallStatus(orders),
+        paymentStatus: 'unpaid',
         orders,
         items,
         subtotal: b.subtotal,
@@ -944,25 +1136,66 @@ app.post('/counter/payment', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Invalid payment method' });
     }
 
-    const bill = await db.prepare("SELECT * FROM bills WHERE id = ? AND status = 'open'").get(billId);
-    if (!bill) {
-      return res.status(404).json({ success: false, message: 'Active bill not found' });
-    }
-
-    const payAmount = (amount !== undefined && amount !== null) ? amount : bill.grand_total;
     const transactionId = `TXN-${Date.now()}`;
+    let bill;
+    let payAmount;
 
     const runPayment = db.transaction(async () => {
+      // Lock in the same order as Place Order: table first, then bill. This keeps
+      // payment and a simultaneous Continue Order from racing or deadlocking.
+      const billRef = await db.prepare('SELECT table_id FROM bills WHERE id = ?').get(billId);
+      if (!billRef) {
+        const notFound = new Error('Active bill not found');
+        notFound.statusCode = 404;
+        throw notFound;
+      }
+
+      await db.prepare('SELECT id FROM tables WHERE id = ? FOR UPDATE').get(billRef.table_id);
+      bill = await db.prepare("SELECT * FROM bills WHERE id = ? AND status = 'open' FOR UPDATE").get(billId);
+      if (!bill) {
+        const notFound = new Error('Active bill not found');
+        notFound.statusCode = 404;
+        throw notFound;
+      }
+
+      payAmount = (amount !== undefined && amount !== null) ? Number(amount) : Number(bill.grand_total);
+      if (!Number.isFinite(payAmount) || payAmount < 0) {
+        const invalid = new Error('Invalid payment amount');
+        invalid.statusCode = 400;
+        throw invalid;
+      }
+
       await db.prepare(`
         INSERT INTO payments (bill_id, amount, payment_method, transaction_id, status)
         VALUES (?, ?, ?, ?, 'completed')
       `).run(billId, payAmount, payment_method, transactionId);
 
+      // Payment is the ONLY normal action that closes the active table session.
       await db.prepare(`
         UPDATE bills
         SET status = 'closed', total_paid = total_paid + ?, closed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
       `).run(payAmount, billId);
+
+      // Prevent stale kitchen cards after a table is paid/cleared. Historical
+      // order rows remain; only their final statuses are updated.
+      await db.prepare(`
+        UPDATE orders
+        SET status = 'completed', completed_at = COALESCE(completed_at, CURRENT_TIMESTAMP), updated_at = CURRENT_TIMESTAMP
+        WHERE id IN (SELECT order_id FROM bill_items WHERE bill_id = ?)
+          AND status NOT IN ('completed', 'cancelled')
+      `).run(billId);
+      await db.prepare(`
+        UPDATE order_items
+        SET status = 'served'
+        WHERE order_id IN (
+          SELECT bi.order_id
+          FROM bill_items bi
+          JOIN orders o ON o.id = bi.order_id
+          WHERE bi.bill_id = ? AND o.status <> 'cancelled'
+        )
+          AND status <> 'served'
+      `).run(billId);
 
       await db.prepare("UPDATE tables SET status = 'available' WHERE id = ?").run(bill.table_id);
       await db.prepare("UPDATE sessions SET is_active = 0, ended_at = CURRENT_TIMESTAMP WHERE bill_id = ?").run(billId);
@@ -980,7 +1213,7 @@ app.post('/counter/payment', async (req, res) => {
     });
   } catch (error) {
     console.error('Counter payment error:', error);
-    res.status(500).json({ success: false, message: 'Payment failed' });
+    res.status(error.statusCode || 500).json({ success: false, message: error.statusCode ? error.message : 'Payment failed' });
   }
 });
 

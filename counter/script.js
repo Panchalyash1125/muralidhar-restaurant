@@ -167,6 +167,7 @@
     node.querySelector('.bill-name').textContent = bill.customerName || '—';
     node.querySelector('.bill-phone').textContent = Formatters.phone(bill.customerPhone);
     node.querySelector('.bill-time').textContent = Formatters.datetime(bill.orderTime);
+    node.querySelector('.bill-payment-status').textContent = bill.paymentStatus === 'unpaid' ? 'Unpaid' : (bill.paymentStatus || 'Unpaid');
 
     const itemsList = node.querySelector('.bill-items');
     (bill.items || []).forEach(item => {
@@ -247,6 +248,7 @@
       <div class="modal-row"><span>Name</span><span>${escapeHtml(bill.customerName || '—')}</span></div>
       <div class="modal-row"><span>Mobile</span><span>${Formatters.phone(bill.customerPhone)}</span></div>
       <div class="modal-row"><span>Order Time</span><span>${Formatters.datetime(bill.orderTime)}</span></div>
+      <div class="modal-row"><span>Payment Status</span><span>${escapeHtml(bill.paymentStatus === 'unpaid' ? 'Unpaid' : (bill.paymentStatus || 'Unpaid'))}</span></div>
 
       <div class="modal-row section-title">Merged Orders</div>
       ${orderRows || '<div class="modal-row"><span>No orders</span></div>'}

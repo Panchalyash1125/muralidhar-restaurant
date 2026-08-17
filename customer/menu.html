@@ -47,6 +47,19 @@
 
   <!-- Main Content -->
   <main>
+    <!-- Existing unpaid table order (loaded from backend, not localStorage) -->
+    <section class="active-order-panel hidden" id="activeOrderPanel" aria-live="polite">
+      <div class="active-order-heading">
+        <div>
+          <span class="active-order-kicker">Already Ordered</span>
+          <h2>Table <span id="activeOrderTable">--</span> Active Bill</h2>
+        </div>
+        <strong id="activeOrderTotal">₹0.00</strong>
+      </div>
+      <div class="active-order-items" id="activeOrderItems"></div>
+      <p class="active-order-note">You can add more items below. New items will be added to this same unpaid table bill.</p>
+    </section>
+
     <!-- Categories -->
     <section class="categories-section">
       <div class="categories-list" id="categoriesList" aria-label="Menu categories">

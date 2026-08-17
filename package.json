@@ -10,7 +10,8 @@
     "seed": "node backend/database/seeds.js",
     "reset-db": "node backend/database/reset.js",
     "test": "echo Tests will be added in Module 6",
-    "lint": "eslint backend/"
+    "lint": "eslint backend/",
+    "test:active-session": "node tests/active-table-session-regression.js"
   },
   "keywords": [
     "restaurant",
