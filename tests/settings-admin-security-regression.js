@@ -56,6 +56,9 @@ assert(dashboardHtml.includes('style="visibility:hidden"'), 'Dashboard stays hid
 assert(dashboardJs.includes("API.get('/admin/session')"), 'Dashboard validates backend admin session before becoming visible');
 assert(dashboardJs.includes("window.location.replace('index.html')"), 'Invalid/refresh/direct dashboard access returns to Admin login');
 assert(dashboardJs.includes("API.post('/admin/logout'"), 'Logout invalidates backend admin token');
+assert(dashboardHtml.includes('Change Admin Username') && dashboardHtml.includes('newAdminUsername'), 'Admin Settings contains Change Username controls');
+assert(dashboardJs.includes("API.post('/admin/change-username'"), 'Admin Settings submits username changes to protected backend API');
+assert(server.includes("key = 'admin_username'") && server.includes("upsertSetting('admin_username', newUsername)"), 'Changed Admin username is stored in the existing settings table');
 assert(dashboardHtml.includes('Change Admin Password') && dashboardHtml.includes('currentAdminPassword'), 'Admin Settings contains Change Password controls');
 assert(dashboardJs.includes("API.post('/admin/change-password'"), 'Admin Settings submits password changes to protected backend API');
 assert(menuService.includes('Authorization = `Bearer ${window.__ADMIN_ACCESS_TOKEN}`'), 'Admin menu CRUD sends backend auth token');

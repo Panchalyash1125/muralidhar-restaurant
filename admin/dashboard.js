@@ -101,6 +101,14 @@
     settingsFormSuccess: document.getElementById('settingsFormSuccess'),
     settingsSaveBtn: document.getElementById('settingsSaveBtn'),
 
+    // Admin username change
+    usernameChangeForm: document.getElementById('usernameChangeForm'),
+    newAdminUsername: document.getElementById('newAdminUsername'),
+    usernameCurrentPassword: document.getElementById('usernameCurrentPassword'),
+    usernameChangeError: document.getElementById('usernameChangeError'),
+    usernameChangeSuccess: document.getElementById('usernameChangeSuccess'),
+    usernameChangeBtn: document.getElementById('usernameChangeBtn'),
+
     // Admin password change
     passwordChangeForm: document.getElementById('passwordChangeForm'),
     currentAdminPassword: document.getElementById('currentAdminPassword'),
@@ -827,6 +835,63 @@
       showSettingsError(err.message || 'Failed to update restaurant settings');
     } finally {
       setSettingsSaveLoading(false);
+    }
+  });
+
+  // ============================================
+  // ADMIN USERNAME CHANGE
+  // ============================================
+  function hideUsernameChangeMessages() {
+    els.usernameChangeError.classList.add('hidden');
+    els.usernameChangeError.textContent = '';
+    els.usernameChangeSuccess.classList.add('hidden');
+    els.usernameChangeSuccess.textContent = '';
+  }
+
+  function showUsernameChangeError(message) {
+    els.usernameChangeError.textContent = message;
+    els.usernameChangeError.classList.remove('hidden');
+  }
+
+  function setUsernameChangeLoading(isLoading) {
+    els.usernameChangeBtn.disabled = isLoading;
+    els.usernameChangeBtn.querySelector('.btn-label').classList.toggle('hidden', isLoading);
+    els.usernameChangeBtn.querySelector('.btn-spinner').classList.toggle('hidden', !isLoading);
+  }
+
+  els.usernameChangeForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    hideUsernameChangeMessages();
+
+    const newUsername = els.newAdminUsername.value.trim();
+    const currentPassword = els.usernameCurrentPassword.value;
+
+    if (!newUsername || !currentPassword) {
+      return showUsernameChangeError('Please enter a new username and your current password.');
+    }
+    if (newUsername.length < 3 || newUsername.length > 50) {
+      return showUsernameChangeError('Username must be between 3 and 50 characters.');
+    }
+    if (!/^[A-Za-z0-9._-]+$/.test(newUsername)) {
+      return showUsernameChangeError('Username can use letters, numbers, dot, underscore and hyphen only.');
+    }
+    if (newUsername === els.sidebarUsername.textContent.trim()) {
+      return showUsernameChangeError('New username must be different from the current username.');
+    }
+
+    setUsernameChangeLoading(true);
+    try {
+      const response = await API.post('/admin/change-username', { currentPassword, newUsername });
+      const savedUsername = response?.data?.username || newUsername;
+      els.usernameChangeForm.reset();
+      els.sidebarUsername.textContent = savedUsername;
+      els.usernameChangeSuccess.textContent = response?.message || 'Admin username changed successfully.';
+      els.usernameChangeSuccess.classList.remove('hidden');
+      Toast.success('Admin username changed');
+    } catch (error) {
+      showUsernameChangeError(error.message || 'Failed to change Admin username.');
+    } finally {
+      setUsernameChangeLoading(false);
     }
   });
 

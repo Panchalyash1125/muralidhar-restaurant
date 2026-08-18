@@ -34,8 +34,8 @@ const CORS_ORIGINS = process.env.CORS_ORIGINS
 // The initial password is represented only by a bcrypt hash (never exposed to the frontend).
 // Once changed from Admin Panel, the bcrypt hash stored in the existing `settings` table
 // takes precedence so the new password survives deploys/server restarts.
-const ADMIN_USERNAME = 'admin';
-const DEFAULT_ADMIN_PASSWORD_HASH = '$2b$12$ozU4zqyAJitBVs3lJwsRO.KkJ1jLvb6cXTaDFCr/CKOc2dAOkTTMC';
+const DEFAULT_ADMIN_USERNAME = 'admin';
+const DEFAULT_ADMIN_PASSWORD_HASH = '$2b$12$Za06E0hr9e0Gj.J1sWEiW.RkSfzwyKKQp/GALh3Ap64V6qq5.rRNa';
 const ADMIN_TOKEN_TTL_MS = Math.max(5, Number(process.env.ADMIN_SESSION_TTL_MINUTES || 120)) * 60 * 1000;
 const adminAccessTokens = new Map();
 
@@ -223,24 +223,36 @@ async function readChangedAdminPasswordHash() {
   }
 }
 
+async function readAdminUsername() {
+  try {
+    const row = await db.prepare(`SELECT value FROM settings WHERE key = 'admin_username' LIMIT 1`).get();
+    const saved = String(row?.value || '').trim();
+    return saved || DEFAULT_ADMIN_USERNAME;
+  } catch (error) {
+    console.error('Read admin username error:', error);
+    return DEFAULT_ADMIN_USERNAME;
+  }
+}
+
 async function verifyAdminCredentials(username, password) {
   const submittedUsername = String(username || '').trim();
   const submittedPassword = String(password || '');
+  const currentUsername = await readAdminUsername();
 
   if (!submittedUsername || !submittedPassword) return { configured: true, valid: false };
-  if (!safeStringEqual(submittedUsername, ADMIN_USERNAME)) return { configured: true, valid: false };
+  if (!safeStringEqual(submittedUsername, currentUsername)) return { configured: true, valid: false };
 
   // A password changed from the Admin Panel is the highest-priority credential.
   const changedHash = await readChangedAdminPasswordHash();
   if (changedHash) {
     const valid = await bcrypt.compare(submittedPassword, changedHash).catch(() => false);
-    return { configured: true, valid, username: ADMIN_USERNAME };
+    return { configured: true, valid, username: currentUsername };
   }
 
   // Until a password is changed from the dashboard, use the built-in bcrypt
   // hash for the requested initial password. No deployment variable is required.
   const valid = await bcrypt.compare(submittedPassword, DEFAULT_ADMIN_PASSWORD_HASH).catch(() => false);
-  return { configured: true, valid, username: ADMIN_USERNAME };
+  return { configured: true, valid, username: currentUsername };
 }
 
 function issueAdminToken(username) {
@@ -1377,12 +1389,12 @@ app.post('/api/admin/login', adminLoginLimiter, async (req, res) => {
       return res.status(401).json({ success: false, message: 'Invalid username or password.' });
     }
 
-    const token = issueAdminToken(result.username || ADMIN_USERNAME);
+    const token = issueAdminToken(result.username || DEFAULT_ADMIN_USERNAME);
     res.json({
       success: true,
       data: {
         token,
-        username: result.username || ADMIN_USERNAME,
+        username: result.username || DEFAULT_ADMIN_USERNAME,
         expiresInSeconds: Math.floor(ADMIN_TOKEN_TTL_MS / 1000)
       }
     });
@@ -1402,6 +1414,55 @@ app.get('/api/admin/session', (req, res) => {
 app.post('/api/admin/logout', (req, res) => {
   adminAccessTokens.delete(req.adminAuth.token);
   res.json({ success: true, message: 'Logged out' });
+});
+
+// Change the Admin username from the authenticated dashboard.
+// The username is not a secret, but it is stored centrally in Neon so the
+// updated login survives browser/device changes and server restarts.
+app.post('/api/admin/change-username', async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  try {
+    const currentPassword = String(req.body?.currentPassword || '');
+    const newUsername = String(req.body?.newUsername || '').trim();
+
+    if (!currentPassword || !newUsername) {
+      return res.status(400).json({ success: false, message: 'Current password and new username are required.' });
+    }
+    if (newUsername.length < 3 || newUsername.length > 50) {
+      return res.status(400).json({ success: false, message: 'Username must be between 3 and 50 characters.' });
+    }
+    if (!/^[A-Za-z0-9._-]+$/.test(newUsername)) {
+      return res.status(400).json({ success: false, message: 'Username can use letters, numbers, dot, underscore and hyphen only.' });
+    }
+
+    const current = await verifyAdminCredentials(req.adminAuth.username, currentPassword);
+    if (!current.valid) {
+      return res.status(401).json({ success: false, message: 'Current password is incorrect.' });
+    }
+    if (safeStringEqual(req.adminAuth.username, newUsername)) {
+      return res.status(400).json({ success: false, message: 'New username must be different from the current username.' });
+    }
+
+    await upsertSetting('admin_username', newUsername);
+
+    // Keep the current dashboard usable under the new identity, but force every
+    // other Admin tab/session to authenticate again with the new username.
+    const currentSession = adminAccessTokens.get(req.adminAuth.token);
+    if (currentSession) currentSession.username = newUsername;
+    req.adminAuth.username = newUsername;
+    for (const token of adminAccessTokens.keys()) {
+      if (token !== req.adminAuth.token) adminAccessTokens.delete(token);
+    }
+
+    res.json({
+      success: true,
+      message: 'Admin username changed successfully.',
+      data: { username: newUsername }
+    });
+  } catch (error) {
+    console.error('Change admin username error:', error);
+    res.status(500).json({ success: false, message: 'Failed to change Admin username.' });
+  }
 });
 
 // Change the Admin password from the authenticated dashboard.
