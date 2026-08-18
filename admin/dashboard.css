@@ -974,6 +974,8 @@ input[type="date"].toolbar-select {
 
 .settings-form textarea,
 .settings-form input[type="text"],
+.settings-form input[type="email"],
+.settings-form input[type="password"],
 .settings-form input[type="time"] {
   background: rgba(255,255,255,0.05);
   border: 1.5px solid rgba(255,255,255,0.08);
@@ -1140,4 +1142,27 @@ input[type="date"].toolbar-select {
 .toolbar-select option:checked {
   background-color: #e5e7eb;
   color: #111827;
+}
+
+
+/* Admin password change card - reuses the existing settings visual language. */
+.settings-security-panel {
+  margin-top: var(--space-lg);
+}
+
+.settings-section-heading {
+  padding-bottom: var(--space-md);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+
+.settings-section-heading h2 {
+  color: var(--white);
+  font-size: 1rem;
+  margin: 0 0 5px;
+}
+
+.settings-section-heading p {
+  color: var(--dark-text-secondary);
+  font-size: 0.78rem;
+  margin: 0;
 }

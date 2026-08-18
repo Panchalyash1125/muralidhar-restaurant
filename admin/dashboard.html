@@ -351,6 +351,41 @@
             </div>
           </form>
         </div>
+
+        <div class="settings-panel settings-security-panel">
+          <form id="passwordChangeForm" class="settings-form" novalidate autocomplete="off">
+            <div class="settings-section-heading">
+              <h2>Change Admin Password</h2>
+              <p>Change the password used to open the Admin Panel.</p>
+            </div>
+
+            <div class="form-group">
+              <label for="currentAdminPassword">Current Password *</label>
+              <input type="password" id="currentAdminPassword" autocomplete="current-password" placeholder="Enter current password" required>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label for="newAdminPassword">New Password *</label>
+                <input type="password" id="newAdminPassword" autocomplete="new-password" placeholder="Enter new password" minlength="6" maxlength="128" required>
+              </div>
+              <div class="form-group">
+                <label for="confirmAdminPassword">Confirm New Password *</label>
+                <input type="password" id="confirmAdminPassword" autocomplete="new-password" placeholder="Confirm new password" minlength="6" maxlength="128" required>
+              </div>
+            </div>
+
+            <div id="passwordChangeError" class="form-error hidden"></div>
+            <div id="passwordChangeSuccess" class="form-success hidden"></div>
+
+            <div class="modal-actions settings-actions">
+              <button type="submit" id="passwordChangeBtn" class="btn-primary">
+                <span class="btn-label">Change Password</span>
+                <span class="btn-spinner hidden"></span>
+              </button>
+            </div>
+          </form>
+        </div>
       </section>
 
     </main>

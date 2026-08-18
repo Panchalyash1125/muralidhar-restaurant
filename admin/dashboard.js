@@ -99,7 +99,16 @@
     settingsClosingTime: document.getElementById('settingsClosingTime'),
     settingsFormError: document.getElementById('settingsFormError'),
     settingsFormSuccess: document.getElementById('settingsFormSuccess'),
-    settingsSaveBtn: document.getElementById('settingsSaveBtn')
+    settingsSaveBtn: document.getElementById('settingsSaveBtn'),
+
+    // Admin password change
+    passwordChangeForm: document.getElementById('passwordChangeForm'),
+    currentAdminPassword: document.getElementById('currentAdminPassword'),
+    newAdminPassword: document.getElementById('newAdminPassword'),
+    confirmAdminPassword: document.getElementById('confirmAdminPassword'),
+    passwordChangeError: document.getElementById('passwordChangeError'),
+    passwordChangeSuccess: document.getElementById('passwordChangeSuccess'),
+    passwordChangeBtn: document.getElementById('passwordChangeBtn')
   };
 
   let currentView = 'dashboard';
@@ -818,6 +827,62 @@
       showSettingsError(err.message || 'Failed to update restaurant settings');
     } finally {
       setSettingsSaveLoading(false);
+    }
+  });
+
+  // ============================================
+  // ADMIN PASSWORD CHANGE
+  // ============================================
+  function hidePasswordChangeMessages() {
+    els.passwordChangeError.classList.add('hidden');
+    els.passwordChangeError.textContent = '';
+    els.passwordChangeSuccess.classList.add('hidden');
+    els.passwordChangeSuccess.textContent = '';
+  }
+
+  function showPasswordChangeError(message) {
+    els.passwordChangeError.textContent = message;
+    els.passwordChangeError.classList.remove('hidden');
+  }
+
+  function setPasswordChangeLoading(isLoading) {
+    els.passwordChangeBtn.disabled = isLoading;
+    els.passwordChangeBtn.querySelector('.btn-label').classList.toggle('hidden', isLoading);
+    els.passwordChangeBtn.querySelector('.btn-spinner').classList.toggle('hidden', !isLoading);
+  }
+
+  els.passwordChangeForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    hidePasswordChangeMessages();
+
+    const currentPassword = els.currentAdminPassword.value;
+    const newPassword = els.newAdminPassword.value;
+    const confirmPassword = els.confirmAdminPassword.value;
+
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      return showPasswordChangeError('Please fill in all password fields.');
+    }
+    if (newPassword.length < 6) {
+      return showPasswordChangeError('New password must be at least 6 characters.');
+    }
+    if (newPassword !== confirmPassword) {
+      return showPasswordChangeError('New password and confirmation do not match.');
+    }
+    if (currentPassword === newPassword) {
+      return showPasswordChangeError('New password must be different from the current password.');
+    }
+
+    setPasswordChangeLoading(true);
+    try {
+      const response = await API.post('/admin/change-password', { currentPassword, newPassword });
+      els.passwordChangeForm.reset();
+      els.passwordChangeSuccess.textContent = response?.message || 'Admin password changed successfully.';
+      els.passwordChangeSuccess.classList.remove('hidden');
+      Toast.success('Admin password changed');
+    } catch (error) {
+      showPasswordChangeError(error.message || 'Failed to change Admin password.');
+    } finally {
+      setPasswordChangeLoading(false);
     }
   });
 

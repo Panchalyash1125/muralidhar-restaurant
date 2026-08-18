@@ -46,13 +46,18 @@ assert(!adminLoginHtml.includes('Demo credentials') && !adminLoginHtml.includes(
 assert(adminLoginHtml.includes('Enter Admin Password'), 'Admin password placeholder is non-secret');
 assert(adminLoginJs.includes("API.post('/admin/login'"), 'Admin credentials are sent to backend login API for validation');
 assert(!adminLoginJs.includes('localStorage') && !adminLoginJs.includes('Storage.set('), 'Admin login no longer persists authentication in localStorage');
-assert(server.includes('ADMIN_PASSWORD_HASH') && server.includes('bcrypt.compare'), 'Backend supports bcrypt ADMIN_PASSWORD_HASH verification');
+assert(server.includes('DEFAULT_ADMIN_PASSWORD_HASH') && server.includes('bcrypt.compare'), 'Backend has a bcrypt-only initial Admin password fallback');
+assert(!server.includes("'admin123'") && !server.includes('\"admin123\"'), 'Initial Admin password is not stored as plain text in backend code');
+assert(server.includes("key = 'admin_password_hash'") && server.includes("upsertSetting('admin_password_hash', newHash)"), 'Changed Admin password hash is stored in the existing settings table');
+assert(server.includes("app.post('/api/admin/change-password'"), 'Authenticated Admin password change API exists');
 assert(server.includes("app.use('/api/admin', requireAdminAuth)"), 'Admin API routes are protected by server-side authentication middleware');
 assert(guardJs.includes("params.get('auth')") && guardJs.includes('history.replaceState'), 'Dashboard consumes one-opening token and removes it from URL');
 assert(dashboardHtml.includes('style="visibility:hidden"'), 'Dashboard stays hidden until backend token validation succeeds');
 assert(dashboardJs.includes("API.get('/admin/session')"), 'Dashboard validates backend admin session before becoming visible');
 assert(dashboardJs.includes("window.location.replace('index.html')"), 'Invalid/refresh/direct dashboard access returns to Admin login');
 assert(dashboardJs.includes("API.post('/admin/logout'"), 'Logout invalidates backend admin token');
+assert(dashboardHtml.includes('Change Admin Password') && dashboardHtml.includes('currentAdminPassword'), 'Admin Settings contains Change Password controls');
+assert(dashboardJs.includes("API.post('/admin/change-password'"), 'Admin Settings submits password changes to protected backend API');
 assert(menuService.includes('Authorization = `Bearer ${window.__ADMIN_ACCESS_TOKEN}`'), 'Admin menu CRUD sends backend auth token');
 
 console.log('\nAll settings/image/admin-security regression checks passed.');

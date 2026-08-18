@@ -30,11 +30,12 @@ const CORS_ORIGINS = process.env.CORS_ORIGINS
   ? process.env.CORS_ORIGINS.split(',').map(v => v.trim()).filter(Boolean)
   : true; // allow the deployed same-origin frontend when no explicit list is configured
 
-// Admin authentication is server-side only. Prefer ADMIN_PASSWORD_HASH (bcrypt).
-// ADMIN_PASSWORD is supported as a server-only fallback for simpler deployments.
-const ADMIN_USERNAME = String(process.env.ADMIN_USERNAME || 'admin').trim() || 'admin';
-const ADMIN_PASSWORD_HASH = String(process.env.ADMIN_PASSWORD_HASH || '').trim();
-const ADMIN_PASSWORD = String(process.env.ADMIN_PASSWORD || '');
+// Admin authentication is server-side only. The initial username is always "admin".
+// The initial password is represented only by a bcrypt hash (never exposed to the frontend).
+// Once changed from Admin Panel, the bcrypt hash stored in the existing `settings` table
+// takes precedence so the new password survives deploys/server restarts.
+const ADMIN_USERNAME = 'admin';
+const DEFAULT_ADMIN_PASSWORD_HASH = '$2b$12$ozU4zqyAJitBVs3lJwsRO.KkJ1jLvb6cXTaDFCr/CKOc2dAOkTTMC';
 const ADMIN_TOKEN_TTL_MS = Math.max(5, Number(process.env.ADMIN_SESSION_TTL_MINUTES || 120)) * 60 * 1000;
 const adminAccessTokens = new Map();
 
@@ -208,37 +209,38 @@ function safeStringEqual(a, b) {
   return timingSafeEqual(left, right);
 }
 
+function looksLikeBcryptHash(value) {
+  return /^\$2[aby]\$\d{2}\$/.test(String(value || ''));
+}
+
+async function readChangedAdminPasswordHash() {
+  try {
+    const row = await db.prepare(`SELECT value FROM settings WHERE key = 'admin_password_hash' LIMIT 1`).get();
+    return row && looksLikeBcryptHash(row.value) ? String(row.value) : '';
+  } catch (error) {
+    console.error('Read admin password hash error:', error);
+    return '';
+  }
+}
+
 async function verifyAdminCredentials(username, password) {
   const submittedUsername = String(username || '').trim();
   const submittedPassword = String(password || '');
 
   if (!submittedUsername || !submittedPassword) return { configured: true, valid: false };
+  if (!safeStringEqual(submittedUsername, ADMIN_USERNAME)) return { configured: true, valid: false };
 
-  // Environment variables take precedence and never leave the server.
-  if (ADMIN_PASSWORD_HASH || ADMIN_PASSWORD) {
-    if (!safeStringEqual(submittedUsername, ADMIN_USERNAME)) return { configured: true, valid: false };
-    const valid = ADMIN_PASSWORD_HASH
-      ? await bcrypt.compare(submittedPassword, ADMIN_PASSWORD_HASH).catch(() => false)
-      : safeStringEqual(submittedPassword, ADMIN_PASSWORD);
+  // A password changed from the Admin Panel is the highest-priority credential.
+  const changedHash = await readChangedAdminPasswordHash();
+  if (changedHash) {
+    const valid = await bcrypt.compare(submittedPassword, changedHash).catch(() => false);
     return { configured: true, valid, username: ADMIN_USERNAME };
   }
 
-  // Optional DB fallback for deployments that already have a real bcrypt admin hash.
-  const user = await db.prepare(`
-    SELECT id, username, password_hash
-    FROM users
-    WHERE username = ? AND role = 'admin' AND is_active = TRUE
-    LIMIT 1
-  `).get(submittedUsername);
-
-  const looksLikeBcrypt = user && /^\$2[aby]\$\d{2}\$/.test(String(user.password_hash || ''));
-  if (!looksLikeBcrypt) return { configured: false, valid: false };
-
-  const valid = await bcrypt.compare(submittedPassword, user.password_hash).catch(() => false);
-  if (valid) {
-    await db.prepare('UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = ?').run(user.id).catch(() => {});
-  }
-  return { configured: true, valid, username: user.username };
+  // Until a password is changed from the dashboard, use the built-in bcrypt
+  // hash for the requested initial password. No deployment variable is required.
+  const valid = await bcrypt.compare(submittedPassword, DEFAULT_ADMIN_PASSWORD_HASH).catch(() => false);
+  return { configured: true, valid, username: ADMIN_USERNAME };
 }
 
 function issueAdminToken(username) {
@@ -1371,12 +1373,6 @@ app.post('/api/admin/login', adminLoginLimiter, async (req, res) => {
   try {
     const { username, password } = req.body || {};
     const result = await verifyAdminCredentials(username, password);
-    if (!result.configured) {
-      return res.status(503).json({
-        success: false,
-        message: 'Admin password is not configured on the server. Set ADMIN_PASSWORD_HASH or ADMIN_PASSWORD.'
-      });
-    }
     if (!result.valid) {
       return res.status(401).json({ success: false, message: 'Invalid username or password.' });
     }
@@ -1406,6 +1402,48 @@ app.get('/api/admin/session', (req, res) => {
 app.post('/api/admin/logout', (req, res) => {
   adminAccessTokens.delete(req.adminAuth.token);
   res.json({ success: true, message: 'Logged out' });
+});
+
+// Change the Admin password from the authenticated dashboard.
+// Only a bcrypt hash is persisted in Neon; the plain-text password is never stored.
+app.post('/api/admin/change-password', async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  try {
+    const currentPassword = String(req.body?.currentPassword || '');
+    const newPassword = String(req.body?.newPassword || '');
+
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ success: false, message: 'Current password and new password are required.' });
+    }
+    if (newPassword.length < 6) {
+      return res.status(400).json({ success: false, message: 'New password must be at least 6 characters.' });
+    }
+    if (newPassword.length > 128) {
+      return res.status(400).json({ success: false, message: 'New password is too long.' });
+    }
+
+    const current = await verifyAdminCredentials(req.adminAuth.username, currentPassword);
+    if (!current.valid) {
+      return res.status(401).json({ success: false, message: 'Current password is incorrect.' });
+    }
+    if (safeStringEqual(currentPassword, newPassword)) {
+      return res.status(400).json({ success: false, message: 'New password must be different from the current password.' });
+    }
+
+    const newHash = await bcrypt.hash(newPassword, 12);
+    await upsertSetting('admin_password_hash', newHash);
+
+    // Keep only the current dashboard session alive. Any other open Admin session
+    // must authenticate again using the new password.
+    for (const token of adminAccessTokens.keys()) {
+      if (token !== req.adminAuth.token) adminAccessTokens.delete(token);
+    }
+
+    res.json({ success: true, message: 'Admin password changed successfully.' });
+  } catch (error) {
+    console.error('Change admin password error:', error);
+    res.status(500).json({ success: false, message: 'Failed to change Admin password.' });
+  }
 });
 
 // ============================================
