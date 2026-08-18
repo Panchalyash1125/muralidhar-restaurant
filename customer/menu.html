@@ -1,11 +1,11 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-restaurant-page-title="Menu">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <meta name="theme-color" content="#FF6B00">
-  <meta name="description" content="Browse our delicious menu at Muralidhar Restaurant">
-  <title>Menu | Muralidhar Restaurant</title>
+  <meta name="description" data-restaurant-meta="Browse our delicious menu at " content="Browse our delicious menu at Restaurant">
+  <title>Menu | Restaurant</title>
 
   <link rel="manifest" href="manifest.json">
   <link rel="icon" type="image/svg+xml" href="../shared/images/logo-icon.svg">
@@ -21,13 +21,14 @@
     <div class="header-top">
       <div class="header-brand">
         <div class="header-logo">
-          <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <img data-restaurant-logo-image alt="Restaurant logo" style="display:none;">
+          <svg data-restaurant-logo-fallback viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
             <path d="M11 9H9V2H7v7H5V2H3v7c0 2.12 1.66 3.84 3.75 3.97V22h2.5v-9.03C11.34 12.84 13 11.12 13 9V2h-2v7zm5-3v8h2.5v8H21V2c-2.76 0-5 2.24-5 4z"/>
           </svg>
         </div>
         <div class="header-info">
-          <h1>Muralidhar Restaurant</h1>
-          <span>Authentic Gujarati Cuisine</span>
+          <h1 data-restaurant-name>Restaurant</h1>
+          <span data-restaurant-description>Authentic Gujarati Cuisine</span>
         </div>
       </div>
       <div class="table-indicator" id="tableIndicator">
@@ -87,6 +88,12 @@
     </section>
   </main>
 
+  <footer class="restaurant-footer">
+    <strong data-restaurant-name>Restaurant</strong>
+    <span data-restaurant-address></span>
+    <span><span data-restaurant-phone></span><span class="footer-separator"> · </span><span data-restaurant-email></span></span>
+  </footer>
+
   <!-- Floating Cart -->
   <div class="floating-cart" id="floatingCart" onclick="goToCart()">
     <div class="cart-info">
@@ -107,6 +114,7 @@
   <!-- Scripts -->
   <script src="../shared/js/utils.js"></script>
   <script src="/socket.io/socket.io.js"></script>
+  <script src="../shared/js/restaurant-settings.js"></script>
   <script src="../shared/js/menu-service.js"></script>
   <script src="js/menu.js"></script>
 </body>

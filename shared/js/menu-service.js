@@ -101,13 +101,22 @@ const MenuService = (() => {
   }
 
   async function request(url, options = {}) {
+    const headers = { ...(options.headers || {}) };
+    if (String(url).startsWith('/api/admin') && window.__ADMIN_ACCESS_TOKEN) {
+      headers.Authorization = `Bearer ${window.__ADMIN_ACCESS_TOKEN}`;
+    }
     const response = await fetch(url, {
       cache: 'no-store',
       credentials: 'same-origin',
-      ...options
+      ...options,
+      headers
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok || data.success === false) {
+      if (response.status === 401 && window.location.pathname.startsWith('/admin')) {
+        window.__ADMIN_ACCESS_TOKEN = null;
+        window.location.replace('index.html');
+      }
       const err = new Error(data.message || `HTTP ${response.status}`);
       err.status = response.status;
       throw err;

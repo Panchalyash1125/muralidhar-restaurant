@@ -10,18 +10,9 @@
  */
 
 (() => {
-  const SESSION_KEY = 'muralidhar_admin_session';
-
-  // ============================================
-  // SESSION GUARD
-  // ============================================
-  function getSession() {
-    return Storage.get(SESSION_KEY);
-  }
-
-  const session = getSession();
-  if (!session) {
-    window.location.href = 'index.html';
+  const accessToken = window.__ADMIN_ACCESS_TOKEN;
+  if (!accessToken) {
+    window.location.replace('index.html');
     return;
   }
 
@@ -99,8 +90,11 @@
     settingsRemoveLogoBtn: document.getElementById('settingsRemoveLogoBtn'),
     settingsName: document.getElementById('settingsName'),
     settingsPhone: document.getElementById('settingsPhone'),
+    settingsWhatsapp: document.getElementById('settingsWhatsapp'),
     settingsGst: document.getElementById('settingsGst'),
     settingsAddress: document.getElementById('settingsAddress'),
+    settingsEmail: document.getElementById('settingsEmail'),
+    settingsDescription: document.getElementById('settingsDescription'),
     settingsOpeningTime: document.getElementById('settingsOpeningTime'),
     settingsClosingTime: document.getElementById('settingsClosingTime'),
     settingsFormError: document.getElementById('settingsFormError'),
@@ -120,7 +114,7 @@
   let removeLogoRequested = false;
   let currentLogoUrl = null;
 
-  els.sidebarUsername.textContent = session.username || 'Admin';
+  els.sidebarUsername.textContent = 'Admin';
 
   // ============================================
   // SIDEBAR / NAVIGATION
@@ -196,10 +190,16 @@
   // ============================================
   // LOGOUT
   // ============================================
-  els.logoutBtn.addEventListener('click', () => {
-    Storage.remove(SESSION_KEY);
-    Toast.info('You have been logged out.');
-    setTimeout(() => (window.location.href = 'index.html'), 300);
+  els.logoutBtn.addEventListener('click', async () => {
+    els.logoutBtn.disabled = true;
+    try {
+      await API.post('/admin/logout', {});
+    } catch (error) {
+      console.warn('Admin logout request:', error);
+    } finally {
+      window.__ADMIN_ACCESS_TOKEN = null;
+      window.location.replace('index.html');
+    }
   });
 
   // ============================================
@@ -424,14 +424,14 @@
   els.itemImage.addEventListener('change', () => {
     const file = els.itemImage.files[0];
     if (!file) return;
-    if (!file.type.startsWith('image/')) {
-      showFormError('Please select a valid image file.');
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
+    if (!allowedTypes.includes(file.type)) {
+      showFormError('Please select a JPG, JPEG, PNG, or WEBP image.');
       els.itemImage.value = '';
       return;
     }
-    // LocalStorage is small; keep image payloads conservative.
-    if (file.size > 750 * 1024) {
-      showFormError('For LocalStorage, image must be smaller than 750KB.');
+    if (file.size > 5 * 1024 * 1024) {
+      showFormError('Image size must be less than 5 MB.');
       els.itemImage.value = '';
       return;
     }
@@ -505,10 +505,7 @@
       loadCategories();
       loadMenuItems();
     } catch (err) {
-      const message = err?.name === 'QuotaExceededError'
-        ? 'LocalStorage is full. Use a smaller image or delete unused dishes.'
-        : (err.message || 'Failed to save menu item');
-      showFormError(message);
+      showFormError(err.message || 'Failed to save menu item');
     } finally {
       setSaveLoading(false);
     }
@@ -639,15 +636,36 @@
     `).join('');
   }
 
-  function downloadReportCsv(report) {
+  async function downloadReportCsv(report) {
     const date = els.reportDate.value || todayLocalISO();
     const url = `${CONFIG.API_BASE_URL}/admin/reports/export?range=${reportsRange}&date=${date}&report=${report}`;
-    const link = document.createElement('a');
-    link.href = url;
-    link.rel = 'noopener';
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
+    try {
+      const response = await fetch(url, {
+        method: 'GET',
+        credentials: 'same-origin',
+        headers: { Authorization: `Bearer ${window.__ADMIN_ACCESS_TOKEN}` }
+      });
+      if (response.status === 401) {
+        window.__ADMIN_ACCESS_TOKEN = null;
+        window.location.replace('index.html');
+        return;
+      }
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const blob = await response.blob();
+      const disposition = response.headers.get('content-disposition') || '';
+      const match = disposition.match(/filename="?([^";]+)"?/i);
+      const filename = match ? match[1] : `${report}.csv`;
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(objectUrl);
+    } catch (error) {
+      Toast.error(error.message || 'Failed to export report');
+    }
   }
 
   els.exportSalesBtn.addEventListener('click', () => downloadReportCsv('sales'));
@@ -675,8 +693,11 @@
 
     els.settingsName.value = data.restaurantName || '';
     els.settingsPhone.value = data.phone || '';
+    els.settingsWhatsapp.value = data.whatsapp || '';
     els.settingsGst.value = data.gstNumber || '';
     els.settingsAddress.value = data.address || '';
+    els.settingsEmail.value = data.email || '';
+    els.settingsDescription.value = data.description || '';
     els.settingsOpeningTime.value = data.openingTime || '';
     els.settingsClosingTime.value = data.closingTime || '';
 
@@ -705,13 +726,14 @@
     const file = els.settingsLogo.files[0];
     if (!file) return;
 
-    if (!file.type.startsWith('image/')) {
-      showSettingsError('Please select a valid image file.');
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
+    if (!allowedTypes.includes(file.type)) {
+      showSettingsError('Please select a JPG, JPEG, PNG, or WEBP image.');
       els.settingsLogo.value = '';
       return;
     }
     if (file.size > 5 * 1024 * 1024) {
-      showSettingsError('Logo image must be smaller than 5MB.');
+      showSettingsError('Image size must be less than 5 MB.');
       els.settingsLogo.value = '';
       return;
     }
@@ -759,19 +781,26 @@
 
     const name = els.settingsName.value.trim();
     const phone = els.settingsPhone.value.trim();
+    const whatsapp = els.settingsWhatsapp.value.trim();
     const gst = els.settingsGst.value.trim();
+    const email = els.settingsEmail.value.trim();
     const opening = els.settingsOpeningTime.value;
     const closing = els.settingsClosingTime.value;
 
     if (!name) return showSettingsError('Restaurant name is required.');
     if (phone && !/^[0-9+\-\s()]{7,20}$/.test(phone)) return showSettingsError('Please enter a valid phone number.');
+    if (whatsapp && !/^[0-9+\-\s()]{7,20}$/.test(whatsapp)) return showSettingsError('Please enter a valid WhatsApp number.');
     if (gst && !/^[0-9A-Za-z]{15}$/.test(gst)) return showSettingsError('GST number must be a valid 15-character GSTIN.');
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return showSettingsError('Please enter a valid email address.');
 
     const formData = new FormData();
     formData.append('restaurant_name', name);
     formData.append('phone', phone);
+    formData.append('whatsapp', whatsapp);
     formData.append('gst_number', gst);
     formData.append('address', els.settingsAddress.value.trim());
+    formData.append('email', email);
+    formData.append('description', els.settingsDescription.value.trim());
     formData.append('opening_time', opening);
     formData.append('closing_time', closing);
     if (removeLogoRequested) formData.append('remove_logo', 'true');
@@ -784,6 +813,7 @@
       showSettingsSuccess('Restaurant settings updated successfully.');
       Toast.success('Restaurant settings updated');
       populateSettingsForm(res.data);
+      if (typeof RestaurantSettings !== 'undefined') RestaurantSettings.apply(res.data);
     } catch (err) {
       showSettingsError(err.message || 'Failed to update restaurant settings');
     } finally {
@@ -798,7 +828,12 @@
    */
   async function uploadRestaurantSettings(formData) {
     const url = `${CONFIG.API_BASE_URL}/admin/settings/restaurant`;
-    const response = await fetch(url, { method: 'PUT', body: formData, credentials: 'same-origin' });
+    const response = await fetch(url, {
+      method: 'PUT',
+      body: formData,
+      credentials: 'same-origin',
+      headers: { Authorization: `Bearer ${window.__ADMIN_ACCESS_TOKEN}` }
+    });
     const data = await response.json().catch(() => ({}));
     if (!response.ok || !data.success) {
       throw new Error(data.message || `HTTP ${response.status}`);
@@ -848,7 +883,20 @@
   // ============================================
   // INIT
   // ============================================
-  Toast.init();
-  switchView('dashboard');
-  initAdminSocket();
+  async function initAdminDashboard() {
+    Toast.init();
+    try {
+      const sessionRes = await API.get('/admin/session');
+      els.sidebarUsername.textContent = sessionRes?.data?.username || 'Admin';
+      document.body.style.visibility = 'visible';
+      switchView('dashboard');
+      initAdminSocket();
+      if (typeof RestaurantSettings !== 'undefined') RestaurantSettings.refresh().catch(() => {});
+    } catch (error) {
+      window.__ADMIN_ACCESS_TOKEN = null;
+      window.location.replace('index.html');
+    }
+  }
+
+  initAdminDashboard();
 })();

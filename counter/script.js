@@ -228,7 +228,22 @@
     if (e.target === els.modalOverlay) closeModal();
   });
 
-  function openViewBillModal(bill) {
+  async function openViewBillModal(bill) {
+    let restaurant = typeof RestaurantSettings !== 'undefined' ? RestaurantSettings.get() : {};
+    if (typeof RestaurantSettings !== 'undefined') {
+      try { restaurant = await RestaurantSettings.refresh(); } catch (error) { /* keep last loaded settings */ }
+    }
+
+    const brandHtml = `
+      <div class="receipt-brand">
+        ${restaurant.logo ? `<img class="receipt-logo" src="${escapeHtml(restaurant.logo)}" alt="Restaurant logo">` : ''}
+        <strong class="receipt-restaurant-name">${escapeHtml(restaurant.restaurantName || 'Restaurant')}</strong>
+        ${restaurant.address ? `<span>${escapeHtml(restaurant.address)}</span>` : ''}
+        ${restaurant.phone ? `<span>Mobile: ${escapeHtml(restaurant.phone)}</span>` : ''}
+        ${restaurant.gstNumber ? `<span>GSTIN: ${escapeHtml(restaurant.gstNumber)}</span>` : ''}
+      </div>
+    `;
+
     const itemRows = (bill.items || []).map(item => `
       <div class="modal-row">
         <span>${escapeHtml(item.name)} x${item.quantity}</span>
@@ -244,6 +259,7 @@
     `).join('');
 
     const body = `
+      ${brandHtml}
       <div class="modal-row"><span>Table</span><span>${escapeHtml(bill.tableNumber)}</span></div>
       <div class="modal-row"><span>Name</span><span>${escapeHtml(bill.customerName || '—')}</span></div>
       <div class="modal-row"><span>Mobile</span><span>${Formatters.phone(bill.customerPhone)}</span></div>

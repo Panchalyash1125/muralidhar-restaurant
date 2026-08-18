@@ -9,9 +9,11 @@
     "setup": "node backend/database/setup-postgres.js",
     "seed": "node backend/database/seeds.js",
     "reset-db": "node backend/database/reset.js",
-    "test": "echo Tests will be added in Module 6",
+    "test": "npm run test:active-session && npm run test:settings-security",
     "lint": "eslint backend/",
-    "test:active-session": "node tests/active-table-session-regression.js"
+    "test:active-session": "node tests/active-table-session-regression.js",
+    "admin:hash": "node backend/tools/hash-admin-password.js",
+    "test:settings-security": "node tests/settings-admin-security-regression.js"
   },
   "keywords": [
     "restaurant",

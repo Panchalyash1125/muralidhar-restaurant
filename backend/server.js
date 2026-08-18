@@ -14,7 +14,8 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 const rateLimit = require('express-rate-limit');
 const multer = require('multer');
-const { randomUUID } = require('crypto');
+const { randomUUID, timingSafeEqual } = require('crypto');
+const bcrypt = require('bcryptjs');
 require('dotenv').config();
 
 const { Server } = require('socket.io');
@@ -28,6 +29,14 @@ const NODE_ENV = process.env.NODE_ENV || 'development';
 const CORS_ORIGINS = process.env.CORS_ORIGINS
   ? process.env.CORS_ORIGINS.split(',').map(v => v.trim()).filter(Boolean)
   : true; // allow the deployed same-origin frontend when no explicit list is configured
+
+// Admin authentication is server-side only. Prefer ADMIN_PASSWORD_HASH (bcrypt).
+// ADMIN_PASSWORD is supported as a server-only fallback for simpler deployments.
+const ADMIN_USERNAME = String(process.env.ADMIN_USERNAME || 'admin').trim() || 'admin';
+const ADMIN_PASSWORD_HASH = String(process.env.ADMIN_PASSWORD_HASH || '').trim();
+const ADMIN_PASSWORD = String(process.env.ADMIN_PASSWORD || '');
+const ADMIN_TOKEN_TTL_MS = Math.max(5, Number(process.env.ADMIN_SESSION_TTL_MINUTES || 120)) * 60 * 1000;
+const adminAccessTokens = new Map();
 
 // ============================================
 // INITIALIZE APP
@@ -192,6 +201,77 @@ const uploadLogoImage = multer({
 const PostgresDb = require('./postgres-db');
 const db = new PostgresDb(process.env.DATABASE_URL);
 
+function safeStringEqual(a, b) {
+  const left = Buffer.from(String(a || ''), 'utf8');
+  const right = Buffer.from(String(b || ''), 'utf8');
+  if (left.length !== right.length) return false;
+  return timingSafeEqual(left, right);
+}
+
+async function verifyAdminCredentials(username, password) {
+  const submittedUsername = String(username || '').trim();
+  const submittedPassword = String(password || '');
+
+  if (!submittedUsername || !submittedPassword) return { configured: true, valid: false };
+
+  // Environment variables take precedence and never leave the server.
+  if (ADMIN_PASSWORD_HASH || ADMIN_PASSWORD) {
+    if (!safeStringEqual(submittedUsername, ADMIN_USERNAME)) return { configured: true, valid: false };
+    const valid = ADMIN_PASSWORD_HASH
+      ? await bcrypt.compare(submittedPassword, ADMIN_PASSWORD_HASH).catch(() => false)
+      : safeStringEqual(submittedPassword, ADMIN_PASSWORD);
+    return { configured: true, valid, username: ADMIN_USERNAME };
+  }
+
+  // Optional DB fallback for deployments that already have a real bcrypt admin hash.
+  const user = await db.prepare(`
+    SELECT id, username, password_hash
+    FROM users
+    WHERE username = ? AND role = 'admin' AND is_active = TRUE
+    LIMIT 1
+  `).get(submittedUsername);
+
+  const looksLikeBcrypt = user && /^\$2[aby]\$\d{2}\$/.test(String(user.password_hash || ''));
+  if (!looksLikeBcrypt) return { configured: false, valid: false };
+
+  const valid = await bcrypt.compare(submittedPassword, user.password_hash).catch(() => false);
+  if (valid) {
+    await db.prepare('UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = ?').run(user.id).catch(() => {});
+  }
+  return { configured: true, valid, username: user.username };
+}
+
+function issueAdminToken(username) {
+  const token = `${randomUUID()}${randomUUID()}`.replace(/-/g, '');
+  adminAccessTokens.set(token, { username, expiresAt: Date.now() + ADMIN_TOKEN_TTL_MS });
+  return token;
+}
+
+function readBearerToken(req) {
+  const header = String(req.get('authorization') || '');
+  const match = header.match(/^Bearer\s+(.+)$/i);
+  return match ? match[1].trim() : '';
+}
+
+function requireAdminAuth(req, res, next) {
+  res.set('Cache-Control', 'no-store');
+  const token = readBearerToken(req);
+  const session = token ? adminAccessTokens.get(token) : null;
+  if (!session || session.expiresAt <= Date.now()) {
+    if (token) adminAccessTokens.delete(token);
+    return res.status(401).json({ success: false, message: 'Admin authentication required' });
+  }
+  req.adminAuth = { token, username: session.username };
+  next();
+}
+
+setInterval(() => {
+  const now = Date.now();
+  for (const [token, session] of adminAccessTokens.entries()) {
+    if (session.expiresAt <= now) adminAccessTokens.delete(token);
+  }
+}, 10 * 60 * 1000).unref();
+
 async function verifyDatabaseConnection() {
   await db.query('SELECT 1');
   console.log('✅ Neon PostgreSQL database connected');
@@ -299,28 +379,44 @@ app.get('/api/categories', async (req, res) => {
   }
 });
 
-// Restaurant Settings (public, read-only) - name/logo/phone/GST/address/hours
-// for use by any frontend module (customer, kitchen, counter, admin).
+// Restaurant Settings (public, read-only). The database is the single source of truth
+// for branding/contact details used by customer, kitchen, counter and admin screens.
 async function readRestaurantSettings() {
-  const keys = ['restaurant_name', 'logo_url', 'contact_phone', 'gst_number', 'address', 'opening_time', 'closing_time'];
+  const keys = [
+    'restaurant_name', 'logo_url', 'contact_phone', 'whatsapp_number',
+    'gst_number', 'address', 'email', 'description', 'opening_time', 'closing_time'
+  ];
   const placeholders = keys.map(() => '?').join(',');
-  const rows = await db.prepare(`SELECT key, value FROM settings WHERE key IN (${placeholders})`).all(...keys);
+  const rows = await db.prepare(`
+    SELECT key, value, updated_at
+    FROM settings
+    WHERE key IN (${placeholders})
+  `).all(...keys);
   const map = {};
-  rows.forEach(r => { map[r.key] = r.value; });
+  let updatedAt = null;
+  rows.forEach(r => {
+    map[r.key] = r.value;
+    if (r.updated_at && (!updatedAt || new Date(r.updated_at) > new Date(updatedAt))) updatedAt = r.updated_at;
+  });
 
   return {
-    restaurantName: map.restaurant_name || '',
+    restaurantName: map.restaurant_name || 'Restaurant',
     logo: map.logo_url || null,
     phone: map.contact_phone || '',
+    whatsapp: map.whatsapp_number || '',
     gstNumber: map.gst_number || '',
     address: map.address || '',
+    email: map.email || '',
+    description: map.description || '',
     openingTime: map.opening_time || '',
-    closingTime: map.closing_time || ''
+    closingTime: map.closing_time || '',
+    updatedAt
   };
 }
 
 app.get('/api/settings/restaurant', async (req, res) => {
   try {
+    res.set('Cache-Control', 'no-store');
     res.json({ success: true, data: await readRestaurantSettings() });
   } catch (error) {
     console.error('Get restaurant settings error:', error);
@@ -1260,6 +1356,59 @@ app.delete('/counter/order/:id', async (req, res) => {
 });
 
 // ============================================
+// ADMIN AUTHENTICATION API
+// ============================================
+const adminLoginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: Number(process.env.ADMIN_LOGIN_MAX_ATTEMPTS || 20),
+  message: { success: false, message: 'Too many admin login attempts. Please try again later.' },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+app.post('/api/admin/login', adminLoginLimiter, async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  try {
+    const { username, password } = req.body || {};
+    const result = await verifyAdminCredentials(username, password);
+    if (!result.configured) {
+      return res.status(503).json({
+        success: false,
+        message: 'Admin password is not configured on the server. Set ADMIN_PASSWORD_HASH or ADMIN_PASSWORD.'
+      });
+    }
+    if (!result.valid) {
+      return res.status(401).json({ success: false, message: 'Invalid username or password.' });
+    }
+
+    const token = issueAdminToken(result.username || ADMIN_USERNAME);
+    res.json({
+      success: true,
+      data: {
+        token,
+        username: result.username || ADMIN_USERNAME,
+        expiresInSeconds: Math.floor(ADMIN_TOKEN_TTL_MS / 1000)
+      }
+    });
+  } catch (error) {
+    console.error('Admin login error:', error);
+    res.status(500).json({ success: false, message: 'Admin login failed' });
+  }
+});
+
+// Everything below /api/admin/login is protected by the server-side bearer token.
+app.use('/api/admin', requireAdminAuth);
+
+app.get('/api/admin/session', (req, res) => {
+  res.json({ success: true, data: { username: req.adminAuth.username } });
+});
+
+app.post('/api/admin/logout', (req, res) => {
+  adminAccessTokens.delete(req.adminAuth.token);
+  res.json({ success: true, message: 'Logged out' });
+});
+
+// ============================================
 // ADMIN DASHBOARD API
 // ============================================
 // Standalone, read-only stats endpoint that powers the Admin
@@ -1431,7 +1580,7 @@ app.get('/api/admin/menu/:id', async (req, res) => {
 app.post('/api/admin/menu', async (req, res) => {
   uploadMenuImage.single('image')(req, res, async (uploadErr) => {
     if (uploadErr) {
-      return res.status(400).json({ success: false, message: uploadErr.message });
+      return res.status(400).json({ success: false, message: uploadErr.code === 'LIMIT_FILE_SIZE' ? 'Image size must be less than 5 MB.' : uploadErr.message });
     }
 
     try {
@@ -1493,7 +1642,7 @@ app.post('/api/admin/menu', async (req, res) => {
 app.put('/api/admin/menu/:id', async (req, res) => {
   uploadMenuImage.single('image')(req, res, async (uploadErr) => {
     if (uploadErr) {
-      return res.status(400).json({ success: false, message: uploadErr.message });
+      return res.status(400).json({ success: false, message: uploadErr.code === 'LIMIT_FILE_SIZE' ? 'Image size must be less than 5 MB.' : uploadErr.message });
     }
 
     try {
@@ -1834,12 +1983,12 @@ const TIME_24H_REGEX = /^([01]\d|2[0-3]):([0-5]\d)$/;
 app.put('/api/admin/settings/restaurant', async (req, res) => {
   uploadLogoImage.single('logo')(req, res, async (uploadErr) => {
     if (uploadErr) {
-      return res.status(400).json({ success: false, message: uploadErr.message });
+      return res.status(400).json({ success: false, message: uploadErr.code === 'LIMIT_FILE_SIZE' ? 'Image size must be less than 5 MB.' : uploadErr.message });
     }
 
     try {
       const {
-        restaurant_name, phone, gst_number, address, opening_time, closing_time, remove_logo
+        restaurant_name, phone, whatsapp, gst_number, address, email, description, opening_time, closing_time, remove_logo
       } = req.body;
 
       if (!restaurant_name || !restaurant_name.trim()) {
@@ -1853,6 +2002,12 @@ app.put('/api/admin/settings/restaurant', async (req, res) => {
       }
       if (phone && !/^[0-9+\-\s()]{7,20}$/.test(phone)) {
         return res.status(400).json({ success: false, message: 'Please enter a valid phone number' });
+      }
+      if (whatsapp && !/^[0-9+\-\s()]{7,20}$/.test(whatsapp)) {
+        return res.status(400).json({ success: false, message: 'Please enter a valid WhatsApp number' });
+      }
+      if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+        return res.status(400).json({ success: false, message: 'Please enter a valid email address' });
       }
       if (gst_number && !/^[0-9A-Za-z]{15}$/.test(gst_number.trim())) {
         return res.status(400).json({ success: false, message: 'GST number must be a valid 15-character GSTIN' });
@@ -1880,8 +2035,11 @@ app.put('/api/admin/settings/restaurant', async (req, res) => {
         await upsertSetting('restaurant_name', restaurant_name.trim());
         await upsertSetting('logo_url', logoUrl);
         await upsertSetting('contact_phone', phone !== undefined ? phone.trim() : '');
+        await upsertSetting('whatsapp_number', whatsapp !== undefined ? whatsapp.trim() : '');
         await upsertSetting('gst_number', gst_number !== undefined ? gst_number.trim().toUpperCase() : '');
         await upsertSetting('address', address !== undefined ? address.trim() : '');
+        await upsertSetting('email', email !== undefined ? email.trim() : '');
+        await upsertSetting('description', description !== undefined ? description.trim() : '');
         await upsertSetting('opening_time', opening_time || '');
         await upsertSetting('closing_time', closing_time || '');
       });

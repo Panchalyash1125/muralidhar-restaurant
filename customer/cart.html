@@ -1,11 +1,11 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-restaurant-page-title="Cart">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <meta name="theme-color" content="#FF6B00">
-  <meta name="description" content="Review your order at Muralidhar Restaurant">
-  <title>Cart | Muralidhar Restaurant</title>
+  <meta name="description" data-restaurant-meta="Review your order at " content="Review your order at Restaurant">
+  <title>Cart | Restaurant</title>
 
   <link rel="manifest" href="manifest.json">
   <link rel="icon" type="image/svg+xml" href="../shared/images/logo-icon.svg">
@@ -106,11 +106,17 @@
         </svg>
       </button>
     </div>
+    <footer class="restaurant-footer compact">
+      <strong data-restaurant-name>Restaurant</strong>
+      <span data-restaurant-address></span>
+      <span data-restaurant-phone></span>
+    </footer>
   </div>
 
   <!-- Scripts -->
   <script src="../shared/js/utils.js"></script>
   <script src="/socket.io/socket.io.js"></script>
+  <script src="../shared/js/restaurant-settings.js"></script>
   <script src="../shared/js/menu-service.js"></script>
   <script src="js/cart.js"></script>
 </body>

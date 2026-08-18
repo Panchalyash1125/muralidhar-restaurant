@@ -1394,3 +1394,43 @@
 .food-card:nth-child(4) { animation-delay: 0.2s; }
 .food-card:nth-child(5) { animation-delay: 0.25s; }
 .food-card:nth-child(6) { animation-delay: 0.3s; }
+
+
+/* Database-backed restaurant branding additions */
+.entry-logo img,
+.header-logo img {
+  width: 72%;
+  height: 72%;
+  object-fit: contain;
+  border-radius: 12px;
+}
+
+.restaurant-footer {
+  max-width: 1200px;
+  margin: 8px auto 96px;
+  padding: 16px 20px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px 12px;
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+}
+
+.restaurant-footer strong {
+  color: var(--text-primary);
+  width: 100%;
+}
+
+.restaurant-footer.compact {
+  margin: 18px auto 10px;
+  padding: 10px 12px;
+}
+
+.restaurant-footer [data-restaurant-address]:empty,
+.restaurant-footer [data-restaurant-phone]:empty,
+.restaurant-footer [data-restaurant-email]:empty,
+.restaurant-footer .footer-separator:has(+ [data-restaurant-email]:empty) {
+  display: none;
+}

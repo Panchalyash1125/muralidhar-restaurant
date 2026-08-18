@@ -15,7 +15,7 @@ const CONFIG = {
   SOCKET_URL: window.location.hostname === 'localhost'
     ? 'http://localhost:3000'
     : '/',
-  APP_NAME: 'Muralidhar Restaurant',
+  APP_NAME: 'Restaurant',
   CURRENCY: '₹',
   GST_RATE: 0.05, // 5% GST
   OTP_EXPIRY: 120, // 2 minutes in seconds
@@ -105,11 +105,16 @@ const API = {
   async request(endpoint, options = {}) {
     const url = `${CONFIG.API_BASE_URL}${endpoint}`;
 
+    const defaultHeaders = {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+    };
+    if (window.__ADMIN_ACCESS_TOKEN) {
+      defaultHeaders.Authorization = `Bearer ${window.__ADMIN_ACCESS_TOKEN}`;
+    }
+
     const defaultOptions = {
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-      },
+      headers: defaultHeaders,
       credentials: 'same-origin'
     };
 
@@ -127,6 +132,10 @@ const API = {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
+        if (response.status === 401 && endpoint !== '/admin/login' && window.location.pathname.startsWith('/admin')) {
+          window.__ADMIN_ACCESS_TOKEN = null;
+          window.location.replace('index.html');
+        }
         throw new Error(errorData.message || `HTTP ${response.status}: ${response.statusText}`);
       }
 

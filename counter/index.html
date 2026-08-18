@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-restaurant-page-title="Counter Panel">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#FF6B00">
-  <title>Counter Panel | Muralidhar Restaurant</title>
+  <title>Counter Panel | Restaurant</title>
 
   <!-- Shared Styles -->
   <link rel="stylesheet" href="../shared/css/theme.css">
@@ -21,7 +21,7 @@
   <!-- Header -->
   <header class="counter-header">
     <div class="counter-header-left">
-      <h1 class="counter-title">💰 Counter Panel</h1>
+      <h1 class="counter-title">💰 <span data-restaurant-name>Restaurant</span> — Counter Panel</h1>
       <span id="connectionBadge" class="connection-badge offline">
         <span class="dot"></span> Connecting...
       </span>
@@ -123,6 +123,7 @@
   <script src="../shared/js/utils.js"></script>
   <!-- Socket.IO Client (served by backend) -->
   <script src="/socket.io/socket.io.js"></script>
+  <script src="../shared/js/restaurant-settings.js"></script>
   <!-- Counter Logic -->
   <script src="script.js"></script>
 </body>
